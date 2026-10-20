@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">학교 장부</string>
+    <string name="title_activity_main">학교 장부</string>
+    <string name="package_name">kr.officeledger.app</string>
+    <string name="custom_url_scheme">kr.officeledger.app</string>
+</resources>

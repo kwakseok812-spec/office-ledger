@@ -1,0 +1,24 @@
+{
+  "appId": "kr.officeledger.app",
+  "appName": "학교 장부",
+  "webDir": "app-www",
+  "backgroundColor": "#1E3A5F",
+  "server": {
+    "url": "https://kwakseok812-spec.github.io/office-ledger/",
+    "errorPath": "offline.html",
+    "allowNavigation": [
+      "kwakseok812-spec.github.io"
+    ],
+    "cleartext": false
+  },
+  "android": {
+    "allowMixedContent": false,
+    "webContentsDebuggingEnabled": false
+  },
+  "plugins": {
+    "SystemBars": {
+      "insetsHandling": "css",
+      "initialViewportFitValueHint": "cover"
+    }
+  }
+}

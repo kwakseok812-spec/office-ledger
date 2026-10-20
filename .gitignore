@@ -1,0 +1,19 @@
+# 개인 자료(시작 내역 CSV, 입력 SQL, 확인값): 절대 올리지 않는다
+seed_private/
+shots/
+__pycache__/
+*.pyc
+node_modules/
+.env
+*.before-*
+_tmp_*
+
+# 안드로이드 설치파일 만들기에서 생기는 것들
+android/.gradle/
+android/build/
+android/app/build/
+android/signing/
+android/capacitor-cordova-android-plugins/
+*.apk
+*.keystore
+*.jks
