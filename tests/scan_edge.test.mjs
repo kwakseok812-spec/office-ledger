@@ -25,7 +25,7 @@ globalThis.fetch = async (input, init = {}) => {
 };
 await import('../supabase/functions/ex-scan/index.single.ts');
 const call = async (body) => { const r = await handler(new Request(URL_ + '/functions/v1/ex-scan', { method: 'POST', body: JSON.stringify(body) })); return { status: r.status, body: await r.json() }; };
-const good = { key: 'k'.repeat(64), action: 'register', card_last4: '9801', date: '2026-10-19', amount: 38500, summary: '시험 식당', category: '식비', scan_id: 'a1b2c3d4' };
+const good = { key: 'k'.repeat(64), action: 'register', card_last4: '1111', date: '2026-10-19', amount: 38500, summary: '시험 식당', category: '식비', scan_id: 'a1b2c3d4' };
 
 test('키가 틀리면 401, 잠기면 429이고 등록 함수는 부르지 않는다', async () => {
   keyResult = 'bad'; calls.length = 0;
@@ -41,7 +41,7 @@ test('등록: 장부는 카드 끝 4자리/장부 코드로 전달, 서버 함�
   const r = await call(good);
   assert.equal(r.status, 200);
   const reg = calls.find((c) => c.fn === 'ex_scan_register').body;
-  assert.deepEqual(reg, { p_ledger: null, p_card: '9801', p_date: '2026-10-19', p_amount: 38500, p_summary: '시험 식당', p_category: '식비', p_scan_id: 'a1b2c3d4', p_sub_item: null });
+  assert.deepEqual(reg, { p_ledger: null, p_card: '1111', p_date: '2026-10-19', p_amount: 38500, p_summary: '시험 식당', p_category: '식비', p_scan_id: 'a1b2c3d4', p_sub_item: null });
   calls.length = 0;
   await call({ ...good, card_last4: undefined, ledger: 'research', category: '연구활동비', sub_item: '회의비' });
   const r2 = calls.find((c) => c.fn === 'ex_scan_register').body;
@@ -82,4 +82,16 @@ test('SQL 의 지시문 낱말 목록·항목 규칙이 앱(calc.js)·함수와 
   const ts = readFileSync(new URL('../supabase/functions/ex-scan/index.single.ts', import.meta.url), 'utf-8');
   const list = ts.match(/const INSTR_WORDS = \[(.*?)\];/s)[1].split(',').map((x) => x.trim().replace(/'/g, ''));
   assert.deepEqual(list, C.INSTR_WORDS);
+});
+
+test('항목을 안 보내면 서버 함수가 장부별 기본값을 쓰도록 null 로 넘긴다 / summary 오류는 원문 비노출', async () => {
+  calls.length = 0;
+  await call({ ...good, category: undefined });
+  assert.equal(calls.find((c) => c.fn === 'ex_scan_register').body.p_category, null);
+  rpcOverride = { fn: 'ex_scan_summary', res: jres(400, { message: 'relation ex_tx secret detail' }) };
+  const r = await call({ key: 'k'.repeat(64), action: 'summary', ledger: 'opex' });
+  assert.equal(r.status, 500); assert.doesNotMatch(JSON.stringify(r.body), /relation|secret|detail/);
+  rpcOverride = { fn: 'ex_scan_summary', res: jres(400, { message: 'ledger_not_ready' }) };
+  assert.equal((await call({ key: 'k'.repeat(64), action: 'summary', ledger: 'research' })).status, 409);
+  rpcOverride = null;
 });

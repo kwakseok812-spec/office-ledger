@@ -14,6 +14,8 @@ def check(pg, tag):
       const w = document.documentElement.clientWidth; const out = [];
       if (document.documentElement.scrollWidth > w + 1) out.push('page-overflow ' + document.documentElement.scrollWidth + '>' + w);
       document.querySelectorAll('button, .chip-f, .big-btn').forEach(b => { if (b.scrollWidth > b.clientWidth + 2 && getComputedStyle(b).overflow !== 'visible') out.push('clip:' + (b.textContent||'').trim().slice(0,12)); });
+      document.querySelectorAll('.bottom .big-btn').forEach(b => { const r = b.getBoundingClientRect(); if (r.right > w + 1 || r.left < -1) out.push('bottom-btn-out:' + (b.textContent||'').trim()); });
+      document.querySelectorAll('.rep:not(.rep-sm)').forEach(t => { const wrap = t.parentElement; if (wrap.scrollWidth > wrap.clientWidth + 2 && !document.querySelector('.scroll-hint')) out.push('table-scroll-without-hint'); });
       return out; }""")
     if r: problems.append((tag, r))
 
@@ -42,7 +44,6 @@ with sync_playwright() as p:
                 pg.goto(BASE + '?mock=1&empty=1'); pg.wait_for_timeout(700)
                 shot(pg, '01_login_first_light_390')
             pg.goto(BASE + '?mock=1&auto=1'); pg.wait_for_timeout(900)
-            if pg.locator('.font-opt').count(): pg.locator('.font-opt').first.click(); pg.wait_for_timeout(300)
             shot(pg, f'10_home_opex_{tag}')
             pg.evaluate('window.scrollTo(0, 99999)'); shot(pg, f'11_home_opex_scrolled_{tag}', 'scrolled_' + tag); pg.evaluate('window.scrollTo(0,0)')
             # 지출 추가 시트
@@ -56,6 +57,15 @@ with sync_playwright() as p:
             # 내역·정산서
             click(pg, '[data-act="go-records"]')
             shot(pg, f'30_records_{tag}')
+            # 수정 창(운영비) -> 지우기 -> 휴지통
+            click(pg, '.tx-row')
+            shot(pg, f'33_edit_sheet_{tag}')
+            click(pg, '.sheet [data-act="delete-tx"]'); click(pg, '.dialog [data-act="dlg"]', '지우기')
+            shot(pg, f'34_deleted_{tag}')
+            click(pg, '.sheet [data-act="close-sheet"]')
+            click(pg, '[data-act="go-trash"]')
+            shot(pg, f'35_trash_{tag}')
+            click(pg, '[data-act="go-records"]')
             click(pg, '[data-act="go-report"]')
             shot(pg, f'31_report_{tag}')
             click(pg, '[data-act="go-records"]')
@@ -87,9 +97,18 @@ with sync_playwright() as p:
     # 큰 글씨
     ctx = b.new_context(viewport={'width': 390, 'height': 844}, device_scale_factor=2, locale='ko-KR')
     pg = ctx.new_page(); pg.goto(BASE + '?mock=1&auto=1'); pg.wait_for_timeout(900)
-    if pg.locator('.font-opt').count(): pg.locator('.font-opt').nth(2).click(); pg.wait_for_timeout(300)
+    # 큰 글씨: 설정 화면의 「아주 크게」 단추(.seg-btn)를 실제로 눌러 적용하고, 적용됐는지 확인한다
+    click(pg, '[data-act="go-settings"]'); click(pg, '.seg-btn[data-v="xlarge"]'); click(pg, '[data-act="go-home"]')
+    got = pg.evaluate("document.documentElement.dataset.font")
+    if got != 'xlarge': problems.append(('xlarge', ['글씨 크기가 적용되지 않음: ' + str(got)]))
     shot(pg, '60_home_xlarge_390', 'xlarge_home')
+    pg.evaluate('window.scrollTo(0, 99999)'); shot(pg, '60b_home_xlarge_scrolled_390', 'xlarge_home_scrolled'); pg.evaluate('window.scrollTo(0,0)')
     click(pg, '[data-act="add-tx"]'); shot(pg, '61_add_xlarge_390', 'xlarge_add')
+    pg.locator('.sheet-body').evaluate('e => e.scrollTo(0, 99999)'); shot(pg, '61b_add_xlarge_bottom_390', 'xlarge_add_bottom')
+    click(pg, '.sheet [data-act="close-sheet"]'); click(pg, '[data-act="go-records"]'); shot(pg, '62_records_xlarge_390', 'xlarge_records')
+    click(pg, '[data-act="go-report"]'); shot(pg, '63_report_xlarge_390', 'xlarge_report')
+    click(pg, '[data-act="go-records"]'); click(pg, '[data-act="go-home"]')
+    click(pg, '[data-act="pick-ledger"][data-code="research"]'); shot(pg, '64_research_xlarge_390', 'xlarge_research')
     b.close()
 srv.shutdown()
 print('PROBLEMS:', problems if problems else 'none')

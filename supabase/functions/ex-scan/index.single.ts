@@ -51,7 +51,7 @@ const ERR_TEXT: Record<string, string> = {
   'out of period': '예산 기간 밖 날짜입니다.',
 };
 
-// 장부는 코드(opex/research) 또는 카드 끝 4자리(9801 운영비 / 8837 연구비)로 고른다
+// 장부는 코드(opex/research) 또는 카드 끝 4자리(서버 장부 설정의 card_last4)로 고른다
 const ledgerOf = (b: any) => (b.ledger === 'opex' || b.ledger === 'research' ? b.ledger : null);
 const cardOf = (b: any) => (/^[0-9]{4}$/.test(String(b.card_last4 ?? '')) ? String(b.card_last4) : null);
 
@@ -69,7 +69,13 @@ Deno.serve(async (req: Request) => {
     if (body.action === 'summary') {
       const date = typeof body.date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(body.date) ? body.date : null;
       const r = await rpc('ex_scan_summary', { p_ledger: ledgerOf(body), p_card: cardOf(body), p_date: date });
-      if (!r.ok) return json(r.status >= 500 ? 500 : 400, { error: 'summary_failed', message: String(r.data?.message ?? '') });
+      if (!r.ok) {   // 서버 원문 메시지는 내보내지 않고 알려진 사유만 번역한다
+        const msg = String(r.data?.message ?? '');
+        const key = ['no_ledger', 'ledger_not_ready', 'not_ready'].find((k) => new RegExp('(^|[^a-z_])' + k + '($|[^a-z_])').test(msg));
+        if (key === 'ledger_not_ready') return json(409, { error: key, message: ERR_TEXT[key] });
+        if (key) return json(400, { error: key, message: ERR_TEXT[key] });
+        return json(500, { error: 'summary_failed', message: '요약을 읽지 못했습니다.' });
+      }
       return json(200, r.data);
     }
 
@@ -77,8 +83,9 @@ Deno.serve(async (req: Request) => {
       const amount = body.amount;
       if (!Number.isInteger(amount) || amount <= 0 || amount > 99999999) return json(400, { error: 'bad_amount', message: ERR_TEXT.bad_amount });
       if (typeof body.date !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(body.date)) return json(400, { error: 'bad_date', message: '날짜가 올바르지 않습니다.' });
-      const category = String(body.category ?? '식비');   // 항목이 장부의 목록 안에 있는지는 서버 함수가 장부별로 확인한다
-      if (!category || category.length > 30) return json(400, { error: 'bad_category', message: ERR_TEXT.bad_category });
+      // 항목을 안 보내면 서버 함수가 장부별 기본값(운영비 식비 / 연구비 연구활동비)을 쓰고, 목록 안에 있는지도 장부별로 확인한다
+      const category = body.category === undefined || body.category === null || body.category === '' ? null : String(body.category);
+      if (category !== null && category.length > 30) return json(400, { error: 'bad_category', message: ERR_TEXT.bad_category });
       const summary = String(body.summary ?? '').replace(/\s+/g, ' ').trim();
       if (!summary || summary.length > 20 || !FIELD_RE.test(summary) || looksLikeInstruction(summary)) return json(400, { error: 'bad_summary', message: ERR_TEXT.bad_summary });
       const subItem = body.sub_item ? String(body.sub_item).slice(0, 40) : null;   // 연구비 세부 비목(선택)

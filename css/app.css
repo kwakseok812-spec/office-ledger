@@ -335,7 +335,7 @@ html[data-reduce="1"] *, html[data-reduce="1"] *::before, html[data-reduce="1"] 
 .rep td.r { text-align: right; font-variant-numeric: tabular-nums; }
 .rep td.l { text-align: left; }
 .rep tfoot td { font-weight: 800; background: var(--key); }
-.rep.mini { font-size: .95rem; }
+.rep.rep-sm { font-size: .95rem; }
 @media print {
   body { background: #fff; color: #000; }
   .no-print, .bottom, .undo-bar, .toast, .sheet, .scrim { display: none !important; }
@@ -349,3 +349,18 @@ html[data-reduce="1"] *, html[data-reduce="1"] *::before, html[data-reduce="1"] 
 html[data-font="large"] .mb-val, html[data-font="xlarge"] .mb-val { font-size: 10px; }
 html[data-font="large"] .mb-lbl, html[data-font="xlarge"] .mb-lbl { font-size: 11px; }
 .stack2.sticky-save { background: var(--sheet); padding-top: 6px; }
+
+/* 표를 옆으로 밀 수 있다는 단서(양쪽 그림자) */
+.rep-wrap { background:
+  linear-gradient(to right, var(--wb, var(--bg)) 30%, transparent) 0 0 / 28px 100% no-repeat local,
+  linear-gradient(to left, var(--wb, var(--bg)) 30%, transparent) 100% 0 / 28px 100% no-repeat local,
+  radial-gradient(farthest-side at 0 50%, rgba(0,0,0,.22), transparent) 0 0 / 12px 100% no-repeat scroll,
+  radial-gradient(farthest-side at 100% 50%, rgba(0,0,0,.22), transparent) 100% 0 / 12px 100% no-repeat scroll; }
+.scroll-hint { margin: 2px 0 4px; }
+@media (min-width: 700px) { .scroll-hint { display: none; } }
+/* 시트 아래 고정 단추 뒤로 칩이 비치지 않게 */
+.sheet-body { padding-bottom: 8px; }
+.sticky-save { background: var(--sheet); box-shadow: 0 -12px 0 var(--sheet), 0 14px 0 var(--sheet), -16px 0 0 var(--sheet), 16px 0 0 var(--sheet); }
+.imp-dups { list-style: none; margin: 4px 0 0; padding: 0; display: grid; gap: 6px; }
+.imp-dups li { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 6px 10px; border: 2px solid var(--line); border-radius: 12px; }
+.card .rep-wrap { --wb: var(--card); }

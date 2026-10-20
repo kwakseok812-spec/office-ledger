@@ -152,15 +152,16 @@ export class MemoryServer {
     const a = this._auth(access);
     const has = (code) => this.tables.ex_ledgers.some((l) => l.user_id === a.user_id && l.code === code);
     const t = this.iso();
-    if (!has('opex')) this.tables.ex_ledgers.push({ id: uuid(), user_id: a.user_id, code: 'opex', name: '보직자 운영비', card_last4: '9801', status: 'active', period_start: '2026-08-01', period_end: '2027-02-28', monthly_limit: 300000, total_budget: 2100000, categories: [...CATEGORIES], subitems: null, budgets: null, project: null, sort: 1, created_at: t, updated_at: t });
-    if (!has('research')) this.tables.ex_ledgers.push({ id: uuid(), user_id: a.user_id, code: 'research', name: '교내과제 연구비', card_last4: '8837', status: 'active', period_start: '2026-06-01', period_end: '2027-02-28', monthly_limit: null, total_budget: null, categories: ['연구활동비', '연구수당', '학생인건비', '시설장비비', '재료비', '위탁연구개발비', '간접비'], subitems: { 연구활동비: ['회의비', '국외 출장 여비', '수용비 및 수수료', '기술정보활동비(전문가활용비)', '조사연구비', '연구홍보비', '국내 출장 여비 및 시내교통비', '연구환경유지비', '야근(특근) 식대'] }, budgets: { 연구활동비: 0, 연구수당: 0, 학생인건비: 0, 시설장비비: 0, 재료비: 0, 위탁연구개발비: 0, 간접비: 0 }, project: { name: '', institution: '', kinds: ['직접비', '간접비'], pay_methods: ['법인카드', '개인카드', '계좌이체', '현금'] }, sort: 2, created_at: t, updated_at: t });
+    if (!has('opex')) this.tables.ex_ledgers.push({ id: uuid(), user_id: a.user_id, code: 'opex', name: '보직자 운영비', card_last4: null, status: 'active', period_start: '2026-08-01', period_end: '2027-02-28', monthly_limit: 300000, total_budget: 2100000, categories: [...CATEGORIES], subitems: null, budgets: null, project: null, sort: 1, created_at: t, updated_at: t });
+    if (!has('research')) this.tables.ex_ledgers.push({ id: uuid(), user_id: a.user_id, code: 'research', name: '교내과제 연구비', card_last4: null, status: 'active', period_start: '2026-06-01', period_end: '2027-02-28', monthly_limit: null, total_budget: null, categories: ['연구활동비', '연구수당', '학생인건비', '시설장비비', '재료비', '위탁연구개발비', '간접비'], subitems: { 연구활동비: ['회의비', '국외 출장 여비', '수용비 및 수수료', '기술정보활동비(전문가활용비)', '조사연구비', '연구홍보비', '국내 출장 여비 및 시내교통비', '연구환경유지비', '야근(특근) 식대'] }, budgets: { 연구활동비: 0, 연구수당: 0, 학생인건비: 0, 시설장비비: 0, 재료비: 0, 위탁연구개발비: 0, 간접비: 0 }, project: { name: '', institution: '', kinds: ['직접비', '간접비'], pay_methods: ['법인카드', '개인카드', '계좌이체', '현금'] }, sort: 2, created_at: t, updated_at: t });
   }
   updateLedger(access, id, patch) {
     const a = this._auth(access);
     const l = this._ledger(a.user_id, id);
     if (!l) throw new ApiError(404, 'no_ledger', '장부를 찾을 수 없습니다.');
     if (patch.categories || patch.subitems) throw new ApiError(400, 'check', '분류 목록은 여기서 바꿀 수 없습니다.');
-    const next = { ...l, ...patch, id: l.id, user_id: l.user_id, code: l.code, card_last4: l.card_last4, created_at: l.created_at };
+    const next = { ...l, ...patch, id: l.id, user_id: l.user_id, code: l.code, created_at: l.created_at };
+    if (next.card_last4 !== null && next.card_last4 !== undefined && !/^\d{4}$/.test(String(next.card_last4))) throw new ApiError(400, 'check', '카드 끝 4자리는 숫자 4자리입니다.');
     if (next.period_end < next.period_start) throw new ApiError(400, 'check', '기간이 올바르지 않습니다.');
     for (const k of ['monthly_limit', 'total_budget']) if (next[k] !== null && (!Number.isInteger(next[k]) || next[k] < 0)) throw new ApiError(400, 'check', '금액이 올바르지 않습니다.');
     next.updated_at = this.iso();
@@ -295,7 +296,7 @@ export class MemoryServer {
       const FIELD_RE = /^[0-9A-Za-z가-힣 \-·&()]+$/;
       if (!Number.isInteger(body.amount) || body.amount <= 0 || body.amount > 99999999) return { status: 400, body: { error: 'bad_amount' } };
       if (!/^\d{4}-\d{2}-\d{2}$/.test(body.date || '')) return { status: 400, body: { error: 'bad_date' } };
-      const category = body.category ?? '식비';
+      const category = body.category ? body.category : (led.code === 'research' ? '연구활동비' : '식비');   // 항목을 안 보내면 장부별 기본값
       if (!led.categories.includes(category)) return { status: 400, body: { error: 'bad_category' } };
       const summary = String(body.summary ?? '').replace(/\s+/g, ' ').trim();
       if (!summary || summary.length > 20 || !FIELD_RE.test(summary) || looksLikeInstruction(summary)) return { status: 400, body: { error: 'bad_summary' } };

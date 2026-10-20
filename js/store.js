@@ -327,8 +327,10 @@ export function createStore({ adapter, storage, clock = () => Date.now() }) {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(next.period_start) || !/^\d{4}-\d{2}-\d{2}$/.test(next.period_end) || next.period_end < next.period_start) throw new SaveError('기간을 확인해 주세요.');
     for (const k of ['monthly_limit', 'total_budget']) if (next[k] !== null && (!Number.isInteger(next[k]) || next[k] < 0 || next[k] > 999999999)) throw new SaveError('금액을 확인해 주세요.');
     const outside = C.liveTx(ledgerTx()).filter((t) => t.tx_date < next.period_start || t.tx_date > next.period_end).length;
+    if (patch.card_last4 !== undefined && patch.card_last4 !== '' && !/^\d{4}$/.test(String(patch.card_last4))) throw new SaveError('카드 끝 4자리는 숫자 4자리입니다.');
     const upd = {};
     for (const k of ['period_start', 'period_end', 'monthly_limit', 'total_budget']) if (patch[k] !== undefined) upd[k] = next[k];
+    if (patch.card_last4 !== undefined) upd.card_last4 = patch.card_last4 === '' ? null : patch.card_last4;
     try {
       const row = await adapter.data.updateLedger(led.id, upd);
       const i = state.ledgers.findIndex((l) => l.id === led.id);

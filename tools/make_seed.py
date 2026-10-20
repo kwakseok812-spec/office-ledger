@@ -22,6 +22,7 @@ import json
 with open(os.path.join(SEED, 'seed_config.json'), encoding='utf-8') as _f:
     _cfg = json.load(_f)
 RES_BUDGETS = _cfg['res_budgets']
+CARDS = _cfg.get('cards', {})      # {"opex": "끝 4자리", "research": "끝 4자리"} — 개인 설정이라 저장소에 두지 않는다
 EXPECT_OPEX = tuple(_cfg['expect_opex'])
 EXPECT_RES = tuple(_cfg['expect_res'])
 
@@ -47,6 +48,11 @@ def col(head, *names):
     raise SystemExit('열을 찾을 수 없습니다: %s / %s' % (names, head))
 
 
+def blank_if_missing(v):
+    """원본 자료가 「자료에 없음」이라고 적은 칸은 앱에서는 빈 값으로 둔다"""
+    return '' if re.sub(r'\s+', '', v or '') in ('자료에없음', '미상', '없음') else v
+
+
 def amount(s):
     return int(re.sub(r'[,\s원]', '', s))
 
@@ -56,7 +62,7 @@ def main():
     c = {k: col(oh, *v) for k, v in {'date': ('사용일자',), 'settle': ('정산일자',), 'meal': ('구분',), 'summary': ('적요',), 'amount': ('금액',), 'att': ('참가자',), 'hc': ('인원',)}.items()}
     opex = []
     for r in orows:
-        opex.append(dict(date=r[c['date']], settle=r[c['settle']] or r[c['date']], meal=r[c['meal']], summary=r[c['summary']], amount=amount(r[c['amount']]), att=r[c['att']], hc=int(r[c['hc']]) if r[c['hc']].strip() else None))
+        opex.append(dict(date=r[c['date']], settle=r[c['settle']] or r[c['date']], meal=r[c['meal']], summary=r[c['summary']], amount=amount(r[c['amount']]), att=blank_if_missing(r[c['att']]), hc=int(r[c['hc']]) if r[c['hc']].strip() else None))
     n, total = len(opex), sum(x['amount'] for x in opex)
     if (n, total) != EXPECT_OPEX:
         raise SystemExit('운영비 건수·합계가 확인된 값과 다릅니다: %s != %s' % ((n, total), EXPECT_OPEX))
@@ -65,7 +71,7 @@ def main():
     d = {k: col(rh, *v) for k, v in {'date': ('사용일자',), 'summary': ('세부내역',), 'cat': ('항목',), 'kind': ('구분',), 'amount': ('금액',), 'proof': ('증빙번호',), 'pay': ('결제수단',), 'settle': ('정산일자',), 'project': ('과제명',), 'inst': ('지원기관',), 'att': ('참가자/인원',)}.items()}
     res = []
     for r in rrows:
-        res.append(dict(date=r[d['date']], summary=r[d['summary']], cat=r[d['cat']], kind=r[d['kind']], amount=amount(r[d['amount']]), proof=r[d['proof']], pay=re.sub(r'\(.*\)', '', r[d['pay']]).strip(), settle=r[d['settle']], att=r[d['att']]))
+        res.append(dict(date=r[d['date']], summary=r[d['summary']], cat=r[d['cat']], kind=r[d['kind']], amount=amount(r[d['amount']]), proof=r[d['proof']], pay=re.sub(r'\(.*\)', '', r[d['pay']]).strip(), settle=r[d['settle']], att=blank_if_missing(r[d['att']])))
     project = {r[d['project']] for r in rrows}
     inst = {re.sub(r'\(.*\)', '', r[d['inst']]).strip() for r in rrows}
     if len(project) != 1:
@@ -97,8 +103,10 @@ def main():
     ins = list(inst)[0] if inst else ''
     w("  update public.ex_ledgers set")
     w("    project = coalesce(project, '{}'::jsonb) || jsonb_build_object('name', %s, 'institution', %s)," % (q(pj), q(ins)))
-    w("    budgets = '{%s}'::jsonb, total_budget = %d, card_last4 = '8837', period_start = date '2026-06-01', period_end = date '2027-02-28'" % (budgets, sum(RES_BUDGETS.values())))
+    w("    budgets = '{%s}'::jsonb, total_budget = %d, card_last4 = %s, period_start = date '2026-06-01', period_end = date '2027-02-28'" % (budgets, sum(RES_BUDGETS.values()), q(CARDS.get('research'))))
     w("  where id = lr;")
+    if CARDS.get('opex'):
+        w("  update public.ex_ledgers set card_last4 = %s where id = lo;" % q(CARDS['opex']))
     w('')
     w('  -- 운영비 %d건' % n)
     w('  insert into public.ex_tx (user_id, ledger_id, tx_date, settle_date, category, meal, summary, amount, attendees, headcount, source)')

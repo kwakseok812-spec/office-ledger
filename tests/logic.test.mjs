@@ -13,7 +13,12 @@ async function mk({ now = KST('2026-10-20'), login = true } = {}) {
   const server = new MemoryServer({ now: () => clock.t });
   const adapter = createMemoryAdapter(server);
   const store = createStore({ adapter, clock: () => clock.t });
-  if (login) { await store.loadSlots(); await store.setup(1, PW); }
+  if (login) {
+    await store.loadSlots(); await store.setup(1, PW);
+    // 카드 끝 4자리는 서버 기본값이 비어 있으므로(개인 설정) 시험용 가짜 값을 설정한다
+    for (const l of store.state.ledgers) await adapter.data.updateLedger(l.id, { card_last4: l.code === 'opex' ? '1111' : '2222' });
+    await store.sync();
+  }
   return { clock, server, adapter, store };
 }
 const F = (o = {}) => ({ tx_date: '2026-10-19', category: '식비', meal: '중식', summary: '시험 식당', amount: 30000, attendees: '시험인 외 1명', headcount: 2, ...o });
@@ -112,8 +117,8 @@ test('처음 설정 -> 장부 2개 자동 생성, 운영비 기본값은 서버 
   assert.equal(store.state.phase, 'app');
   assert.deepEqual(store.state.ledgers.map((l) => l.code), ['opex', 'research']);
   const o = store.state.ledgers[0];
-  assert.equal(o.monthly_limit, 300000); assert.equal(o.total_budget, 2100000); assert.equal(o.card_last4, '9801'); assert.deepEqual(o.categories, C.CATEGORIES);
-  assert.equal(store.state.ledgers[1].card_last4, '8837'); assert.equal(store.state.ledgers[1].status, 'active');
+  assert.equal(o.monthly_limit, 300000); assert.equal(o.total_budget, 2100000); assert.equal(o.card_last4, '1111', '시험에서 설정한 값(서버 기본값은 비어 있음)'); assert.deepEqual(o.categories, C.CATEGORIES);
+  assert.equal(store.state.ledgers[1].card_last4, '2222'); assert.equal(store.state.ledgers[1].status, 'active');
 });
 
 test('지출 추가 -> 서버 저장 확인 후 반영, 이력·되돌리기(15초)', async () => {
@@ -186,7 +191,7 @@ test('장부 분리: 연구비 입력은 운영비 합계·한도에 영향이 �
   await store.addTx(F({ amount: 30000 }));
   store.setLedger('research');
   const led = store.curLedger();
-  await store.saveResearch({ name: '시험 과제', institution: '시험 기관', period_start: '2026-06-01', period_end: '2027-02-28', budgets: { 연구활동비: 500000, 연구수당: 100000 }, card_last4: '8837' });
+  await store.saveResearch({ name: '시험 과제', institution: '시험 기관', period_start: '2026-06-01', period_end: '2027-02-28', budgets: { 연구활동비: 500000, 연구수당: 100000 }, card_last4: '2222' });
   assert.equal(store.curLedger().total_budget, 600000);
   await store.addTx({ tx_date: '2026-07-10', settle_date: '2026-08-03', category: '연구활동비', sub_item: '회의비', meal: '직접비', summary: '회의비', amount: 40000, pay_method: '법인카드', proof_no: '1', attendees: null, headcount: null });
   assert.equal(store.researchSummary().used, 40000);
@@ -212,9 +217,9 @@ test('로그인: 틀린 횟수 잠금·다시 열기·전체 로그아웃', asyn
 
 /* ----------------------------- 영수증 스캔 입구 ----------------------------- */
 const KEY = 'k'.repeat(64);
-const reg = (extra = {}) => ({ key: KEY, action: 'register', card_last4: '9801', date: '2026-10-19', amount: 38500, summary: '시험 식당', category: '식비', scan_id: 'a1b2c3d4', ...extra });
+const reg = (extra = {}) => ({ key: KEY, action: 'register', card_last4: '1111', date: '2026-10-19', amount: 38500, summary: '시험 식당', category: '식비', scan_id: 'a1b2c3d4', ...extra });
 
-test('스캔 등록: 카드 9801 -> 운영비 장부, 같은 scan_id 두 번은 한 건, 요약 숫자 반환', async () => {
+test('스캔 등록: 카드 1111 -> 운영비 장부, 같은 scan_id 두 번은 한 건, 요약 숫자 반환', async () => {
   const { server, store } = await mk();
   const a = server.scanCall(reg());
   assert.equal(a.status, 200); assert.equal(a.body.duplicate, false); assert.equal(a.body.summary.ledger, 'opex'); assert.equal(a.body.summary.day_count, 1); assert.equal(a.body.summary.month_used, 38500);
@@ -223,9 +228,9 @@ test('스캔 등록: 카드 9801 -> 운영비 장부, 같은 scan_id 두 번은 
   await store.sync(); assert.equal(store.summary().monthUsed, 38500); assert.equal(store.findTx(a.body.id).source, 'scan');
 });
 
-test('스캔 등록: 카드 8837 -> 연구비 장부(법인카드·세부 비목), 장부/카드 없으면 거부, 준비 중이면 거부', async () => {
+test('스캔 등록: 카드 2222 -> 연구비 장부(법인카드·세부 비목), 장부/카드 없으면 거부, 준비 중이면 거부', async () => {
   const { server, store } = await mk();
-  const r = server.scanCall(reg({ card_last4: '8837', category: '연구활동비', sub_item: '회의비', summary: '회의비', scan_id: 'b1b1b1b1' }));
+  const r = server.scanCall(reg({ card_last4: '2222', category: '연구활동비', sub_item: '회의비', summary: '회의비', scan_id: 'b1b1b1b1' }));
   assert.equal(r.status, 200); assert.equal(r.body.summary.ledger, 'research');
   const row = server.tables.ex_tx.find((t) => t.scan_id === 'b1b1b1b1');
   assert.equal(row.pay_method, '법인카드'); assert.equal(row.sub_item, '회의비');
@@ -233,7 +238,7 @@ test('스캔 등록: 카드 8837 -> 연구비 장부(법인카드·세부 비목
   assert.equal(server.scanCall(reg({ card_last4: undefined, ledger: 'opex', scan_id: 'c1c1c1c1' })).status, 200);
   assert.equal(server.scanCall(reg({ category: '연구활동비', scan_id: 'd1d1d1d1' })).body.error, 'bad_category', '운영비에 연구비 비목 금지');
   server.tables.ex_ledgers.find((l) => l.code === 'research').status = 'soon';
-  const soon = server.scanCall(reg({ card_last4: '8837', category: '연구활동비', scan_id: 'e1e1e1e1' }));
+  const soon = server.scanCall(reg({ card_last4: '2222', category: '연구활동비', scan_id: 'e1e1e1e1' }));
   assert.equal(soon.status, 409); assert.equal(soon.body.error, 'ledger_not_ready');
 });
 
@@ -263,8 +268,53 @@ test('스캔 등록: 하루 건수·금액 상한', async () => {
 test('스캔 summary: 읽기만, 장부별로 분리', async () => {
   const { server } = await mk();
   server.scanCall(reg({ amount: 10000 }));
-  server.scanCall(reg({ card_last4: '8837', category: '연구활동비', summary: '회의비', scan_id: 'f1f1f1f1', amount: 77000 }));
-  const o = server.scanCall({ key: KEY, action: 'summary', card_last4: '9801', date: '2026-10-19' }).body;
+  server.scanCall(reg({ card_last4: '2222', category: '연구활동비', summary: '회의비', scan_id: 'f1f1f1f1', amount: 77000 }));
+  const o = server.scanCall({ key: KEY, action: 'summary', card_last4: '1111', date: '2026-10-19' }).body;
   const r = server.scanCall({ key: KEY, action: 'summary', ledger: 'research', date: '2026-10-19' }).body;
   assert.equal(o.total_used, 10000); assert.equal(o.monthly_limit, 300000); assert.equal(r.total_used, 77000);
+});
+
+test('서버 기본 장부에는 카드 끝 4자리가 없고, 설정 화면(saveLedger)에서 바꿀 수 있다', async () => {
+  const { store, server } = await mk({ login: false });
+  await store.loadSlots(); await store.setup(1, PW);
+  assert.deepEqual(store.state.ledgers.map((l) => l.card_last4), [null, null]);
+  await assert.rejects(() => store.saveLedger({ card_last4: '12a4' }), SaveError);
+  await store.saveLedger({ card_last4: '4321' });
+  assert.equal(store.curLedger().card_last4, '4321'); assert.equal(server.tables.ex_ledgers[0].card_last4, '4321');
+  assert.equal(server.scanCall({ key: KEY, action: 'summary', card_last4: '4321' }).status, 200, '바꾼 카드로 스캔이 장부를 찾는다');
+  await store.saveLedger({ card_last4: '' }); assert.equal(store.curLedger().card_last4, null);
+  store.setLedger('research');
+  await store.saveResearch({ name: '', institution: '', period_start: '2026-06-01', period_end: '2027-02-28', budgets: {}, card_last4: '5555' });
+  assert.equal(store.curLedger().card_last4, '5555');
+});
+
+test('스캔 항목 기본값은 장부별: 운영비 식비 / 연구비 연구활동비', async () => {
+  const { server } = await mk();
+  const a = server.scanCall({ key: KEY, action: 'register', card_last4: '1111', date: '2026-10-19', amount: 1000, summary: '시험', scan_id: '10101010' });
+  assert.equal(a.status, 200); assert.equal(server.tables.ex_tx.find((t) => t.scan_id === '10101010').category, '식비');
+  const b = server.scanCall({ key: KEY, action: 'register', card_last4: '2222', date: '2026-10-19', amount: 1000, summary: '시험', scan_id: '20202020' });
+  assert.equal(b.status, 200); assert.equal(server.tables.ex_tx.find((t) => t.scan_id === '20202020').category, '연구활동비');
+});
+
+test('금액이 큰 건 확인: 운영비 100만 원 이상, 연구비 500만 원 이상(연구비는 비목 예산 초과 확인이 기본)', () => {
+  const opex = C.checkEntry({ tx: [], settings: C.DEFAULTS, today: '2026-10-20', f: F({ amount: 1000000 }) });
+  assert.equal(opex.big, true);
+  const led = { code: 'research', status: 'active', period_start: '2026-06-01', period_end: '2027-02-28', categories: ['연구활동비'], budgets: { 연구활동비: 9000000 }, total_budget: 9000000 };
+  const mk2 = (amount) => C.checkEntry({ tx: [], settings: led, today: '2026-10-20', f: F({ category: '연구활동비', summary: '회의비', tx_date: '2026-07-05', amount }) });
+  assert.equal(mk2(1000000).big, false); assert.equal(mk2(4999999).big, false); assert.equal(mk2(5000000).big, true);
+});
+
+test('가져오기 중복: 줄 번호·사유를 돌려주고, 사용자가 포함을 고를 수 있게 내용(f)도 담는다', () => {
+  const ctx = { tx: [{ id: 'x', tx_date: '2026-08-06', amount: 11100, summary: '시험 식당' }], settings: C.DEFAULTS, today: '2026-10-20' };
+  const r = C.parseImport('2026-08-06,2026-08-06,중식,시험 식당,11100\n2026-08-07,2026-08-07,중식,다른 식당,2000\n2026-08-07,2026-08-07,중식,다른 식당,2000', ctx);
+  assert.equal(r.rows.length, 1);
+  assert.deepEqual(r.skippedDup.map((d) => [d.line, d.reason]), [[1, '이미 입력된 내역과 같습니다'], [3, '붙여 넣은 글의 앞 줄과 같습니다']]);
+  assert.equal(r.skippedDup[1].f.amount, 2000);
+});
+
+test('가져오기 머리글: 적요 헤더 지원, 사용처는 vendor 로(적요와 섞이지 않음), 연번·신청일자는 무시', () => {
+  const ctx = { tx: [], settings: C.DEFAULTS, today: '2026-10-20' };
+  const r = C.parseImport('연번,신청일자,사용일자,적요,금액,사용처\n1,2026-08-06,2026-08-06,점심,5000,시험 가게', ctx);
+  assert.equal(r.errors.length, 0); assert.equal(r.rows[0].f.summary, '점심'); assert.equal(r.rows[0].f.vendor, '시험 가게');
+  assert.ok(C.IMPORT_HEADERS.includes('적요') && C.IMPORT_HEADERS.includes('사용처'));
 });

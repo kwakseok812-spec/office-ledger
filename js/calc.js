@@ -4,13 +4,14 @@
 export const TZ_OFFSET_MIN = 540;
 export const TRASH_DAYS = 30;
 export const MAX_AMOUNT = 99999999;
-export const BIG_AMOUNT = 1000000;      // 이 금액 이상이면 저장 전에 한 번 더 확인
+export const BIG_AMOUNT = 1000000;      // 운영비: 이 금액 이상이면 저장 전에 한 번 더 확인
+export const BIG_AMOUNT_RESEARCH = 5000000;   // 연구비: 이 금액 이상이면 확인(연구비는 비목 예산 초과 확인이 기본)
 export const CATEGORIES = ['식비', '교통비', '회의비', '물품구매', '사무용품', '기타'];
 export const MEALS = ['중식', '석식', '조식'];
 // 장부(ledger) 한 개의 설정. 서버의 ex_ledgers 줄이 있으면 그 값을 쓰고, 없을 때만(서버 연결 전) 이 값을 씁니다.
 // 화면 코드는 한도·기간·분류를 이 상수가 아니라 장부 설정에서 읽습니다.
 export const DEFAULTS = {
-  code: 'opex', name: '보직자 운영비', card_last4: '9801', status: 'active',
+  code: 'opex', name: '보직자 운영비', card_last4: null, status: 'active',
   period_start: '2026-08-01', period_end: '2027-02-28',
   monthly_limit: 300000, total_budget: 2100000,
   categories: CATEGORIES,
@@ -176,7 +177,7 @@ export function checkEntry({ tx, settings, f, today, exceptId = null }) {
   if (f.headcount !== null && f.headcount !== undefined && (!Number.isInteger(f.headcount) || f.headcount < 1 || f.headcount > 999)) { out.error = '인원은 1 이상의 숫자로 적어 주세요.'; return out; }
   const others = liveTx(tx).filter((t) => t.id !== exceptId);
   out.dup = others.find((t) => t.tx_date === f.tx_date && t.amount === f.amount && t.summary === sum) || null;
-  out.big = f.amount >= BIG_AMOUNT;
+  out.big = f.amount >= (isResearch(settings) ? BIG_AMOUNT_RESEARCH : BIG_AMOUNT);
   const used = totalUsed(others, settings) + (inPeriod(f.tx_date, settings) ? f.amount : 0);
   out.newTotal = used;
   const totalCap = isResearch(settings) ? researchTotal(settings) : s.total_budget;
@@ -229,12 +230,14 @@ export function normAmount(s) {
 
 const HEAD_KEYS = {
   '신청일자': 'skip', '사용일자': 'tx_date', '사용일': 'tx_date', '날짜': 'tx_date', '일자': 'tx_date',
-  '정산일자': 'settle_date', '정산일': 'settle_date', '구분': 'meal', '적요': 'summary', '사용처': 'summary', '내용': 'summary',
+  '정산일자': 'settle_date', '정산일': 'settle_date', '구분': 'meal', '적요': 'summary', '내용': 'summary',
   '금액': 'amount', '참가자': 'attendees', '인원': 'headcount', '항목': 'category', '분류': 'category',
   // 연구비 정산 자료(괄호 안 설명은 떼고 읽는다)
   '사용월': 'skip', '세부내역': 'summary', '비목': 'category', '증빙번호': 'proof_no', '결제수단': 'pay_method', '정산일자': 'settle_date',
-  '과제명': 'skip', '지원기관': 'skip', '참가자/인원': 'attendees', '원문불확실': 'skip', '사용처': 'vendor', '세부비목': 'sub_item',
+  '과제명': 'skip', '지원기관': 'skip', '참가자/인원': 'attendees', '원문불확실': 'skip', '사용처': 'vendor', '세부비목': 'sub_item', '연번': 'skip',
 };
+/** 가져오기 머리글로 인정하는 이름(화면 안내문에 그대로 보여 준다) */
+export const IMPORT_HEADERS = Object.keys(HEAD_KEYS);
 const headKey = (c) => HEAD_KEYS[c] || HEAD_KEYS[String(c).replace(/\(.*\)/, '').trim()] || null;
 const DEFAULT_ORDER = ['tx_date', 'settle_date', 'meal', 'summary', 'amount', 'attendees', 'headcount', 'category'];
 
@@ -254,6 +257,7 @@ export function parseImport(text, { tx = [], settings = null, today }) {
   const s = effective(settings);
   const seen = liveTx(tx).map((t) => `${t.tx_date}|${t.amount}|${t.summary}`);
   const seenSet = new Set(seen);
+  const existing = new Set(seen);
   for (let i = start; i < lines.length; i++) {
     const no = i + 1;
     const cells = splitLine(lines[i], delim);
@@ -279,7 +283,7 @@ export function parseImport(text, { tx = [], settings = null, today }) {
     const sub_item = g.sub_item ? String(g.sub_item).trim().slice(0, 40) || null : null;
     const attendees = g.attendees ? g.attendees.slice(0, ATTENDEES_MAX) : null;
     const key = `${tx_date}|${amount}|${summary}`;
-    if (seenSet.has(key)) { skippedDup.push({ line: no }); continue; }
+    if (seenSet.has(key)) { skippedDup.push({ line: no, reason: existing.has(key) ? '이미 입력된 내역과 같습니다' : '붙여 넣은 글의 앞 줄과 같습니다', f: { tx_date, settle_date: settle || tx_date, category, meal, summary, amount, attendees, headcount, pay_method, proof_no, vendor, sub_item } }); continue; }
     seenSet.add(key);
     rows.push({ line: no, f: { tx_date, settle_date: settle || tx_date, category, meal, summary, amount, attendees, headcount, pay_method, proof_no, vendor, sub_item } });
   }

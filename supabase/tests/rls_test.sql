@@ -25,6 +25,12 @@ begin
   select id into lo1 from public.ex_ledgers where code = 'opex';
   select id into lr1 from public.ex_ledgers where code = 'research';
   select count(*) into n from public.ex_ledgers; if n <> 2 then raise exception 'FAIL: 장부 수 %', n; end if;
+  select count(*) into n from public.ex_ledgers where card_last4 is not null; if n <> 0 then raise exception 'FAIL: 기본 장부에 카드 번호가 들어 있음'; end if;
+  -- 카드 끝 4자리는 앱 사용자가 설정에서 바꿀 수 있다(형식 검사는 표가 함)
+  update public.ex_ledgers set card_last4 = '1111' where id = lo1; get diagnostics n = row_count; if n <> 1 then raise exception 'FAIL: 카드 끝 4자리를 못 바꿈'; end if;
+  update public.ex_ledgers set card_last4 = '2222' where id = lr1;
+  ok := false; begin update public.ex_ledgers set card_last4 = '12a4' where id = lo1; exception when others then ok := true; end;
+  if not ok then raise exception 'FAIL: 카드 형식 검사가 안 걸림'; end if;
   insert into public.ex_tx (id, ledger_id, tx_date, category, summary, amount) values (t1, lo1, (now() at time zone 'Asia/Seoul')::date, '식비', '시험 식당', 10000);
   reset role;
 
@@ -112,16 +118,16 @@ begin
   set local role service_role;
   r := public.ex_scan_register('opex', null, (now() at time zone 'Asia/Seoul')::date, 38500, '시험 식당', '식비', 'a1b2c3d4');
   if (r ->> 'duplicate') <> 'false' then raise exception 'FAIL: 스캔 첫 등록'; end if;
-  r := public.ex_scan_register(null, '9801', (now() at time zone 'Asia/Seoul')::date, 38500, '시험 식당', '식비', 'a1b2c3d4');
+  r := public.ex_scan_register(null, '1111', (now() at time zone 'Asia/Seoul')::date, 38500, '시험 식당', '식비', 'a1b2c3d4');
   if (r ->> 'duplicate') <> 'true' then raise exception 'FAIL: 같은 scan_id 가 두 건이 됨'; end if;
   select count(*) into n from public.ex_tx where user_id = u1 and scan_id = 'a1b2c3d4'; if n <> 1 then raise exception 'FAIL: scan_id 중복 %', n; end if;
-  r := public.ex_scan_register(null, '8837', date '2026-07-11', 5000, '회의비', '연구활동비', 'b1b2b3b4', '회의비');
-  if (r -> 'summary' ->> 'ledger') <> 'research' then raise exception 'FAIL: 카드 8837 이 연구비로 안 감'; end if;
+  r := public.ex_scan_register(null, '2222', date '2026-07-11', 5000, '회의비', '연구활동비', 'b1b2b3b4', '회의비');
+  if (r -> 'summary' ->> 'ledger') <> 'research' then raise exception 'FAIL: 카드 2222 이 연구비로 안 감'; end if;
   ok := false; begin perform public.ex_scan_register('opex', null, current_date, 1000, '시험', '연구활동비', 'c1c2c3c4'); exception when others then ok := true; end;
   if not ok then raise exception 'FAIL: 운영비 장부에 연구비 비목이 들어감'; end if;
   ok := false; begin perform public.ex_scan_register(null, '0000', current_date, 1000, '시험', '식비', 'c1c2c3c5'); exception when others then ok := true; end;
   if not ok then raise exception 'FAIL: 없는 카드가 통과됨'; end if;
-  r := public.ex_scan_summary(null, '9801', (now() at time zone 'Asia/Seoul')::date);
+  r := public.ex_scan_summary(null, '1111', (now() at time zone 'Asia/Seoul')::date);
   if (r ->> 'day_count')::int < 1 or (r ->> 'total_used')::bigint < 38500 then raise exception 'FAIL: 요약 숫자 %', r; end if;
   -- 하루 상한: 건수 1 로 줄이면 다음 등록은 거부
   reset role;
@@ -133,7 +139,7 @@ begin
   reset role;
   update public.ex_ledgers set status = 'soon' where id = lr1;
   set local role service_role;
-  ok := false; begin perform public.ex_scan_register(null, '8837', date '2026-07-12', 100, '회의비', '연구활동비', 'e1e2e3e4'); exception when others then ok := true; end;
+  ok := false; begin perform public.ex_scan_register(null, '2222', date '2026-07-12', 100, '회의비', '연구활동비', 'e1e2e3e4'); exception when others then ok := true; end;
   if not ok then raise exception 'FAIL: 준비 중 장부에 등록됨'; end if;
   -- 스캔 키: 맞는 키 ok, 틀린 키 10번이면 잠금
   k := (select value from public.ex_secret where name = 'scan_key');
@@ -144,7 +150,7 @@ begin
 
   -- ---- 기본 장부 값(운영비)이 앱 기본값과 같은지
   select count(*) into n from public.ex_ledgers where user_id = u1 and code = 'opex' and monthly_limit = 300000 and total_budget = 2100000
-     and period_start = date '2026-08-01' and period_end = date '2027-02-28' and card_last4 = '9801' and categories = '["식비","교통비","회의비","물품구매","사무용품","기타"]'::jsonb;
+     and period_start = date '2026-08-01' and period_end = date '2027-02-28' and card_last4 = '1111' and categories = '["식비","교통비","회의비","물품구매","사무용품","기타"]'::jsonb;
   if n <> 1 then raise exception 'FAIL: 운영비 장부 기본값이 앱과 다름'; end if;
 
   raise notice 'PASS: 사용자 분리·권한·규칙·스캔 입구 시험 통과 (롤백되어 아무것도 남지 않음)';

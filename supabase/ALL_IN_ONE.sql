@@ -158,7 +158,7 @@ create or replace function public.ex_ledgers_before() returns trigger
 language plpgsql set search_path = public as $$
 begin
   new.updated_at := now();
-  if tg_op = 'UPDATE' then new.user_id := old.user_id; new.code := old.code; new.card_last4 := old.card_last4; new.created_at := old.created_at; end if;
+  if tg_op = 'UPDATE' then new.user_id := old.user_id; new.code := old.code; new.created_at := old.created_at;   -- 카드 끝 4자리는 설정 화면에서 바꿀 수 있다(형식은 표의 검사가 확인) end if;
   return new;
 end $$;
 drop trigger if exists ex_ledgers_before on public.ex_ledgers;
@@ -342,13 +342,14 @@ declare uid uuid := auth.uid();
 begin
   if uid is null then raise exception 'not logged in' using errcode = '42501'; end if;
   insert into ex_ledgers (user_id, code, name, card_last4, status, period_start, period_end, monthly_limit, total_budget, categories, sort)
-  values (uid, 'opex', '보직자 운영비', '9801', 'active', date '2026-08-01', date '2027-02-28', 300000, 2100000,
+  values (uid, 'opex', '보직자 운영비', null, 'active', date '2026-08-01', date '2027-02-28', 300000, 2100000,
           '["식비","교통비","회의비","물품구매","사무용품","기타"]'::jsonb, 1)
   on conflict (user_id, code) do nothing;
+  -- 카드 끝 4자리는 개인 설정이므로 여기에 쓰지 않는다(null). 앱 설정 화면 또는 seed_private 입력 파일로 채운다.
   -- 연구비 장부: 비목·세부 비목·구분·결제수단 목록만 넣어 둔다. 과제명·총액·비목별 예산은 개인 자료이므로
   -- 이 파일에 쓰지 않고 앱의 「연구 설정」 화면 또는 seed_private 의 입력 파일로 채운다(비워 둬도 입력은 된다).
   insert into ex_ledgers (user_id, code, name, card_last4, status, period_start, period_end, monthly_limit, total_budget, categories, subitems, budgets, project, sort)
-  values (uid, 'research', '교내과제 연구비', '8837', 'active', date '2026-06-01', date '2027-02-28', null, null,
+  values (uid, 'research', '교내과제 연구비', null, 'active', date '2026-06-01', date '2027-02-28', null, null,
           '["연구활동비","연구수당","학생인건비","시설장비비","재료비","위탁연구개발비","간접비"]'::jsonb,
           '{"연구활동비":["회의비","국외 출장 여비","수용비 및 수수료","기술정보활동비(전문가활용비)","조사연구비","연구홍보비","국내 출장 여비 및 시내교통비","연구환경유지비","야근(특근) 식대"]}'::jsonb,
           '{"연구활동비":0,"연구수당":0,"학생인건비":0,"시설장비비":0,"재료비":0,"위탁연구개발비":0,"간접비":0}'::jsonb,
@@ -430,7 +431,8 @@ begin
   if uid is null then raise exception 'not_ready'; end if;
   led := public.ex_scan_pick_ledger(uid, p_ledger, p_card);
   if p_scan_id is null or p_scan_id !~ '^[0-9a-f]{8}$' then raise exception 'bad_scan_id'; end if;
-  if p_category is null or not (led.categories ? p_category) then raise exception 'bad_category'; end if;
+  p_category := coalesce(nullif(btrim(p_category), ''), case when led.code = 'research' then '연구활동비' else '식비' end);   -- 항목을 안 보내면 장부별 기본값
+  if not (led.categories ? p_category) then raise exception 'bad_category'; end if;
   if p_amount is null or p_amount <= 0 or p_amount > 99999999 then raise exception 'bad_amount'; end if;
   if p_summary is null or char_length(btrim(p_summary)) not between 1 and 60 then raise exception 'bad_summary'; end if;
   select * into r from ex_tx where user_id = uid and scan_id = p_scan_id;
@@ -444,9 +446,15 @@ begin
   select count(*), coalesce(sum(amount), 0) into c, a from ex_tx where user_id = uid and source = 'scan' and created_at >= day_start;
   if c + 1 > maxc or a + p_amount > maxa then raise exception 'daily_limit'; end if;
   if p_sub_item is not null and not (coalesce(led.subitems -> p_category, '[]'::jsonb) ? p_sub_item) then raise exception 'bad_sub_item'; end if;
-  insert into ex_tx (user_id, ledger_id, tx_date, category, sub_item, pay_method, summary, amount, source, scan_id)
-  values (uid, led.id, p_date, p_category, p_sub_item, case when led.code = 'research' then '법인카드' else null end, btrim(p_summary), p_amount, 'scan', p_scan_id)
-  returning id into new_id;
+  begin
+    insert into ex_tx (user_id, ledger_id, tx_date, category, sub_item, pay_method, summary, amount, source, scan_id)
+    values (uid, led.id, p_date, p_category, p_sub_item, case when led.code = 'research' then '법인카드' else null end, btrim(p_summary), p_amount, 'scan', p_scan_id)
+    returning id into new_id;
+  exception when unique_violation then   -- 같은 scan_id 가 동시에 들어온 경우: 먼저 들어간 건을 돌려준다
+    select * into r from ex_tx where user_id = uid and scan_id = p_scan_id;
+    return jsonb_build_object('id', r.id, 'duplicate', true, 'deleted', r.deleted_at is not null, 'tx_date', r.tx_date, 'amount', r.amount)
+      || jsonb_build_object('summary', public.ex_scan_summary_for(uid, r.ledger_id, r.tx_date));
+  end;
   return jsonb_build_object('id', new_id, 'duplicate', false, 'tx_date', p_date, 'amount', p_amount)
     || jsonb_build_object('summary', public.ex_scan_summary_for(uid, led.id, p_date));
 end $$;

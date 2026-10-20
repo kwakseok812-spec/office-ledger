@@ -202,7 +202,7 @@ export function createUI({ root, store, haptics = true }) {
     const mrows = rs.monthly.map((m) => `<tr><td>${esc(m.label)}</td><td class="r">${m.count ? num(m.used) : '-'}</td><td>${m.settle ? esc(C.fmtMD(m.settle)) : '-'}</td><td class="r">${num(m.cum)}</td></tr>`).join('');
     return `<main class="home">${head}${title}${total}
       ${cats ? `<section class="card"><div class="bc-lbl">비목별 예산</div><div class="cat-list">${cats}</div></section>` : ''}
-      <section class="card"><div class="bc-lbl">월별 사용 · 정산일 · 지급신청 누적</div><div class="rep-wrap"><table class="rep mini"><thead><tr><th>달</th><th>사용</th><th>정산일</th><th>누적(신청)</th></tr></thead><tbody>${mrows || '<tr><td colspan="4" class="muted">아직 입력한 내역이 없습니다.</td></tr>'}</tbody></table></div></section>
+      <section class="card"><div class="bc-lbl">월별 사용 · 정산일 · 지급신청 누적</div><div class="rep-wrap"><table class="rep rep-sm"><thead><tr><th>달</th><th>사용</th><th>정산일</th><th>누적(신청)</th></tr></thead><tbody>${mrows || '<tr><td colspan="4" class="muted">아직 입력한 내역이 없습니다.</td></tr>'}</tbody></table></div></section>
       <section class="card recent-card"><div class="rc-head"><span class="bc-lbl">최근 내역</span><button class="link press" data-act="go-records">전체 보기</button></div>
         <div class="list">${recent.length ? recent.map((x) => txRow(x, pend)).join('') : '<p class="muted pad">아직 입력한 내역이 없습니다.</p>'}</div></section>
       ${undoBarHtml()}
@@ -246,6 +246,7 @@ export function createUI({ root, store, haptics = true }) {
     return `<main class="page report"><header class="bar no-print"><button class="back press" data-act="go-records" aria-label="뒤로">${ICON.back}<span>내역</span></button></header>
       <h1 class="page-title">${esc(led ? led.name : '')} ${y}년 ${m}월 정산서</h1>
       <div class="no-print">${monthChips('pick-month')}</div>
+      <p class="muted small no-print scroll-hint">표가 넓으면 옆으로 밀어서 보세요 →</p>
       <div class="rep-wrap"><table class="rep"><thead><tr>${cols.map((c) => `<th>${c}</th>`).join('')}</tr></thead><tbody>${body || `<tr><td colspan="${cols.length}" class="muted">이 달에는 입력한 내역이 없습니다.</td></tr>`}</tbody>
         <tfoot><tr><td colspan="4" class="r">합계 (${rows.length}건)</td><td class="r">${num(used)}</td><td colspan="${cols.length - 5}"></td></tr></tfoot></table></div>
       ${res ? '' : `<p class="muted small">월 한도 ${won(e.monthly_limit)} 대비 ${used <= e.monthly_limit ? `${won(e.monthly_limit - used)} 남음` : `${won(used - e.monthly_limit)} 초과`}</p>`}
@@ -378,14 +379,16 @@ export function createUI({ root, store, haptics = true }) {
     let result = '';
     if (p) {
       const errs = p.errors.slice(0, 8).map((x) => `<li>${x.line ? `${x.line}번째 줄: ` : ''}${esc(x.msg)}</li>`).join('');
-      result = `<div class="imp-result"><p><b>${p.rows.length}건</b> 넣을 수 있습니다 · 합계 <b>${won(p.total)}</b></p>
-        ${p.skippedDup.length ? `<p class="muted small">이미 있는 내역 ${p.skippedDup.length}건은 건너뜁니다.</p>` : ''}
+      const inc = p.skippedDup.filter((d) => (sh.includeDup || []).includes(d.line));
+      const cnt = p.rows.length + inc.length; const tot = p.total + C.sumAmount(inc.map((d) => d.f));
+      result = `<div class="imp-result"><p><b>${cnt}건</b> 넣을 수 있습니다 · 합계 <b>${won(tot)}</b></p>
+        ${p.skippedDup.length ? `<div class="notice warn small"><b>중복으로 보여 건너뛰는 줄 ${p.skippedDup.length}개</b> — 같은 날·같은 금액·같은 적요입니다. 실제로 두 건이면 「포함」을 눌러 주세요.</div><ul class="imp-dups">${p.skippedDup.map((d) => `<li><span>${d.line}번째 줄 · ${esc(C.fmtMD(d.f.tx_date))} ${esc(d.f.summary)} ${won(d.f.amount)}<br><span class="muted small">${esc(d.reason)}</span></span><button class="chip-f press ${(sh.includeDup || []).includes(d.line) ? 'on' : ''}" data-act="imp-toggle-dup" data-line="${d.line}">${(sh.includeDup || []).includes(d.line) ? '포함함' : '포함'}</button></li>`).join('')}</ul>` : ''}
         ${p.errors.length ? `<p class="notice err small">읽지 못한 줄 ${p.errors.length}개 (넣지 않습니다)</p><ul class="imp-err">${errs}</ul>` : ''}</div>`;
     }
-    return `<p class="hint">${isRes() ? '연구비 정산 자료(사용일자·세부내역·항목(비목)·금액·증빙번호·결제수단·정산일자·참가자)를 ' : '정산서 표를 '}복사해 붙여 넣거나 CSV 글을 붙여 넣으세요. 첫 줄에 「사용일자 · 적요 · 금액」 같은 머리글이 있으면 그 순서를 따르고(신청일자는 무시), 없으면 사용일자, 정산일자, 구분, 적요, 금액, 참가자, 인원[, 항목] 순서로 읽습니다.</p>
+    return `<p class="hint">${isRes() ? '연구비 정산 자료(사용일자·세부내역·항목(비목)·금액·증빙번호·결제수단·정산일자·참가자)를 ' : '정산서 표를 '}복사해 붙여 넣거나 CSV 글을 붙여 넣으세요. 첫 줄에 머리글이 있으면 그 순서를 따르고, 없으면 사용일자, 정산일자, 구분, 적요, 금액, 참가자, 인원[, 항목] 순서로 읽습니다.<br>읽는 머리글: 사용일자(사용일·날짜), 정산일자, 구분, 적요(내용·세부내역), 금액, 참가자, 인원, 항목(비목·분류), 사용처, 증빙번호, 결제수단, 세부비목. 신청일자·연번·과제명·지원기관·사용월·원문불확실은 읽지 않고 넘어갑니다.</p>
       <textarea class="input imp-text" ${inputF('importText', 'rows="7" spellcheck="false" placeholder="2026-08-06,2026-08-06,중식,예시 식당,50000,예시인 외 2명,3"')}>${esc(sh.text)}</textarea>
       ${result}${errLine(sh)}
-      <div class="two-btn sticky-save"><button class="big-btn press" data-act="imp-preview">미리 보기</button><button class="big-btn primary press" data-act="imp-go" ${!p || !p.rows.length || ui.busy ? 'disabled' : ''}>${p && p.rows.length ? `${p.rows.length}건 넣기` : '넣기'}</button></div>`;
+      <div class="two-btn sticky-save"><button class="big-btn press" data-act="imp-preview">미리 보기</button><button class="big-btn primary press" data-act="imp-go" ${!p || (!p.rows.length && !(sh.includeDup || []).length) || ui.busy ? 'disabled' : ''}>${p && (p.rows.length || (sh.includeDup || []).length) ? `${p.rows.length + (sh.includeDup || []).length}건 넣기` : '넣기'}</button></div>`;
   }
 
   function ledgerEditSheet(sh) {
@@ -395,6 +398,7 @@ export function createUI({ root, store, haptics = true }) {
       <div class="row-between">${dateChip(`끝나는 날: ${f.period_end}`, 'period_end', f.period_end)}</div>
       <label class="field"><span class="lbl">월 한도 (원)</span><input class="input" ${inputF('monthly_limit', 'type="text" inputmode="numeric"')} value="${esc(f.monthly_limit)}"></label>
       <label class="field"><span class="lbl">총 예산 (원)</span><input class="input" ${inputF('total_budget', 'type="text" inputmode="numeric"')} value="${esc(f.total_budget)}"></label>
+      <label class="field"><span class="lbl">카드 끝 4자리 (영수증 분류용)</span><input class="input" ${inputF('card_last4', 'type="text" inputmode="numeric" maxlength="4"')} value="${esc(f.card_last4)}"></label>
       ${errLine(sh)}<button class="big-btn primary press sticky-save" data-act="save-ledger" ${ui.busy ? 'disabled' : ''}>저장</button>`;
   }
   function receiptEditSheet(sh) {
@@ -598,20 +602,25 @@ export function createUI({ root, store, haptics = true }) {
     const text = (root.querySelector('[data-f="importText"]') || {}).value ?? sh.text;
     sh.text = text;
     sh.parsed = C.parseImport(text, { tx: store.ledgerTx(), settings: store.curLedger(), today: todayStr() });
+    sh.includeDup = [];
     sh.error = '';
     rerender();
   }
   async function doImportGo() {
     const sh = ui.sheet;
-    if (!sh.parsed || !sh.parsed.rows.length) return;
+    if (!sh.parsed) return;
     const p = sh.parsed;
-    const a = await ask({ title: `${p.rows.length}건을 넣을까요?`, body: [`합계 <b>${won(p.total)}</b>`, p.errors.length ? `읽지 못한 ${p.errors.length}줄은 넣지 않습니다.` : '넣은 직후 15초 동안 되돌릴 수 있습니다.'], buttons: [{ label: '넣기', kind: 'primary', value: 'go' }, { label: '그만두기', kind: 'ghost', value: 'no' }] });
+    const inc = p.skippedDup.filter((d) => (sh.includeDup || []).includes(d.line));
+    const all = p.rows.concat(inc.map((d) => ({ line: d.line, f: d.f })));
+    if (!all.length) return;
+    const tot = C.sumAmount(all.map((x) => x.f));
+    const a = await ask({ title: `${all.length}건을 넣을까요?`, body: [`합계 <b>${won(tot)}</b>`, p.errors.length ? `읽지 못한 ${p.errors.length}줄은 넣지 않습니다.` : '넣은 직후 15초 동안 되돌릴 수 있습니다.'], buttons: [{ label: '넣기', kind: 'primary', value: 'go' }, { label: '그만두기', kind: 'ghost', value: 'no' }] });
     if (a !== 'go') return;
     await guarded(async () => {
       try {
-        const r = await store.addMany(p.rows.map((x) => x.f));
+        const r = await store.addMany(all.sort((a, b) => a.line - b.line).map((x) => x.f));
         const sm = store.summary();
-        switchSheet({ kind: 'saved', status: r.status, headline: `${r.rows.length}건을 넣었습니다`, lines: [`합계 <b class="big">${won(p.total)}</b>`, `전체 사용 <b>${won(sm.totalUsed)}</b> · 잔액 <b>${won(sm.totalRemaining)}</b>`] });
+        switchSheet({ kind: 'saved', status: r.status, headline: `${r.rows.length}건을 넣었습니다`, lines: [`합계 <b class="big">${won(tot)}</b>`, `전체 사용 <b>${won(sm.totalUsed)}</b> · 잔액 <b>${won(sm.totalRemaining)}</b>`] });
       } catch (e) { sh.error = saveErrorText(e); }
     });
   }
@@ -703,10 +712,11 @@ export function createUI({ root, store, haptics = true }) {
     'open-import': () => { if (ledgerSoon()) return say('이 장부는 아직 준비 중입니다.'); store.clearUndo(); openSheet({ kind: 'import', text: '', parsed: null }); },
     'imp-preview': () => doImportPreview(),
     'imp-go': () => doImportGo(),
-    'edit-ledger': () => { const e = store.eff(); openSheet({ kind: 'ledger-edit', f: { period_start: e.period_start, period_end: e.period_end, monthly_limit: C.fmtNum(e.monthly_limit), total_budget: C.fmtNum(e.total_budget) } }); },
+    'imp-toggle-dup': (el) => { const sh = ui.sheet; const n = Number(el.dataset.line); sh.includeDup = sh.includeDup || []; const i = sh.includeDup.indexOf(n); if (i >= 0) sh.includeDup.splice(i, 1); else sh.includeDup.push(n); rerender(); },
+    'edit-ledger': () => { const e = store.eff(); openSheet({ kind: 'ledger-edit', f: { period_start: e.period_start, period_end: e.period_end, monthly_limit: C.fmtNum(e.monthly_limit), total_budget: C.fmtNum(e.total_budget), card_last4: e.card_last4 || '' } }); },
     'save-ledger': async () => {
       const sh = ui.sheet; const f = sh.f;
-      const patch = { period_start: f.period_start, period_end: f.period_end, monthly_limit: num0(f.monthly_limit), total_budget: num0(f.total_budget) };
+      const patch = { period_start: f.period_start, period_end: f.period_end, monthly_limit: num0(f.monthly_limit), total_budget: num0(f.total_budget), card_last4: String(f.card_last4 || '').trim() };
       if (Number.isNaN(patch.monthly_limit) || Number.isNaN(patch.total_budget)) { sh.error = '금액을 숫자로 적어 주세요.'; return rerender(); }
       await guarded(async () => {
         try { const r = await store.saveLedger(patch); closeSheet(); say(r.outside ? `저장했습니다. 새 기간 밖의 내역 ${r.outside}건은 합계에서 빠집니다.` : '저장했습니다.', 3500); } catch (e) { sh.error = saveErrorText(e); }
@@ -773,7 +783,7 @@ export function createUI({ root, store, haptics = true }) {
       if (k === 'importText') { ui.sheet.text = t.value; return; }
       let v = t.value;
       if (['amount', 'monthly_limit', 'total_budget', 'scan_daily_max_amount'].includes(k)) { v = fmtInput(v); t.value = v; }
-      if (['headcount', 'scan_daily_max_count'].includes(k)) { v = digitsOf(v); t.value = v; }
+      if (['headcount', 'scan_daily_max_count', 'card_last4'].includes(k)) { v = digitsOf(v); t.value = v; }
       if (/^bud_\d+$/.test(k)) { v = fmtInput(v); t.value = v; if (ui.sheet.f && ui.sheet.f.buds) ui.sheet.f.buds[Number(k.slice(4))] = v; ui.sheet.error = ''; return; }
       if (ui.sheet.f) ui.sheet.f[k] = v;
       ui.sheet.error = '';
