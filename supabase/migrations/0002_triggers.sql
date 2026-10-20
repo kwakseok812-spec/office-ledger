@@ -51,7 +51,8 @@ create or replace function public.ex_ledgers_before() returns trigger
 language plpgsql set search_path = public as $$
 begin
   new.updated_at := now();
-  if tg_op = 'UPDATE' then new.user_id := old.user_id; new.code := old.code; new.created_at := old.created_at;   -- 카드 끝 4자리는 설정 화면에서 바꿀 수 있다(형식은 표의 검사가 확인) end if;
+  -- 카드 끝 4자리는 설정 화면에서 바꿀 수 있다(형식은 표의 검사가 확인)
+  if tg_op = 'UPDATE' then new.user_id := old.user_id; new.code := old.code; new.created_at := old.created_at; end if;
   return new;
 end $$;
 drop trigger if exists ex_ledgers_before on public.ex_ledgers;
