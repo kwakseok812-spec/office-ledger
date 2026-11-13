@@ -318,3 +318,26 @@ test('가져오기 머리글: 적요 헤더 지원, 사용처는 vendor 로(적�
   assert.equal(r.errors.length, 0); assert.equal(r.rows[0].f.summary, '점심'); assert.equal(r.rows[0].f.vendor, '시험 가게');
   assert.ok(C.IMPORT_HEADERS.includes('적요') && C.IMPORT_HEADERS.includes('사용처'));
 });
+
+/* ----------------------------- 비밀번호 길이(O-0855): 새로 정할 때만 6자 ----------------------------- */
+import { derivePassword } from '../supabase/functions/ex-auth/logic.js';
+test('비밀번호: 처음 만들기·바꾸기는 5자 거절 / 6자 통과', async () => {
+  const { server, adapter, store } = await mk({ login: false });
+  await store.loadSlots();
+  await assert.rejects(() => store.setup(1, 'ab12c'), (e) => e instanceof ApiError && e.code === 'weak');
+  await store.setup(1, 'ab12cd');
+  await assert.rejects(() => store.changePassword('ab12cd', 'xy98z'), (e) => e instanceof ApiError && e.code === 'weak');
+  await store.changePassword('ab12cd', 'xy98zw');
+  await store.logout(); await store.login(1, 'xy98zw');
+});
+test('비밀번호: 이미 쓰던 4자·5자 비밀번호는 그대로 로그인된다(길이 조건 없음)', async () => {
+  for (const legacy of ['ab12', 'ab123']) {
+    const { server, adapter, store } = await mk({ login: false });
+    await store.loadSlots();
+    // 예전 규칙(4자 이상)으로 정해 둔 상태를 만든다: 서버 자료에 직접 넣음
+    const st = server.slotsState[1]; st.state = 'set'; st.pwhash = await derivePassword(1, legacy, server.pepper);
+    await store.loadSlots();
+    await store.login(1, legacy);
+    assert.equal(store.state.phase, 'app');
+  }
+});

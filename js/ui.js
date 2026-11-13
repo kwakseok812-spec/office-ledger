@@ -100,7 +100,7 @@ export function createUI({ root, store, haptics = true }) {
     const head = `<div class="login-head"><div class="logo-foot">${ICON.logo}</div><h1>${esc(APP_NAME)}</h1>`;
     if (st.state === 'disabled') return `<main class="login">${head}<p class="notice warn">지금은 열 수 없는 상태입니다.</p></div>${off}<p class="ver">버전 ${esc(APP_VERSION)}</p></main>`;
     const t = first
-      ? '<p class="lead">처음 사용하시는군요.<br>사용할 비밀번호를 정해 주세요.</p><p class="muted">4자 이상이면 되지만 6자 이상을 권장합니다.</p>'
+      ? '<p class="lead">처음 사용하시는군요.<br>사용할 비밀번호를 정해 주세요.</p><p class="muted">6자 이상으로 정해 주세요.</p>'
       : '<p class="lead">비밀번호를 입력해 주세요.</p>';
     const type = L.show ? 'text' : 'password';
     const lockMsg = locked ? `<p class="notice err" role="alert">비밀번호를 여러 번 틀려서 잠겼습니다. ${Math.max(1, Math.ceil((Date.parse(st.locked_until) - store.now()) / 60000))}분 뒤에 다시 해 주세요.</p>` : '';
@@ -440,7 +440,7 @@ export function createUI({ root, store, haptics = true }) {
     return `<p class="lead small-lead">글씨 크기를 고르세요.<br><span class="muted">나중에 설정에서 바꿀 수 있습니다.</span></p>${b('normal', 22)}${b('large', 28)}${b('xlarge', 34)}`;
   }
   function pwSheet(sh) {
-    return `<p class="hint">새 비밀번호는 4자 이상이면 되지만 6자 이상을 권장합니다.</p><label class="field"><span class="lbl">지금 비밀번호</span><input class="input" data-keep="pwcur" data-restore="0" type="password" autocomplete="off"></label>
+    return `<p class="hint">새 비밀번호는 6자 이상으로 정해 주세요.</p><label class="field"><span class="lbl">지금 비밀번호</span><input class="input" data-keep="pwcur" data-restore="0" type="password" autocomplete="off"></label>
       <label class="field"><span class="lbl">새 비밀번호</span><input class="input" data-keep="pwnew" data-restore="0" type="password" autocomplete="off"></label>
       <label class="field"><span class="lbl">새 비밀번호 한 번 더</span><input class="input" data-keep="pwnew2" data-restore="0" type="password" autocomplete="off"></label>
       ${errLine(sh)}<button class="big-btn primary press sticky-save" data-act="save-pw" ${ui.busy ? 'disabled' : ''}>바꾸기</button>`;

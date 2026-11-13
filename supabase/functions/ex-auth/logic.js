@@ -2,7 +2,7 @@
 // 서버 SQL 함수 ex_auth_fail 의 잠금 시간(ex_lock_minutes)과 같은 값을 써야 합니다.
 
 export const MAX_FAILS = 5;
-export const MIN_PW_LEN = 4;
+export const MIN_PW_LEN = 6; // 새로 정하거나 바꿀 때만 적용. 로그인 검사에는 길이 조건이 없어 기존 4~5자 비밀번호도 그대로 열림 (O-0855)
 export const MAX_PW_LEN = 64;
 
 const COMMON = new Set([
@@ -11,7 +11,7 @@ const COMMON = new Set([
   '121212', '147258', '159753', '1q2w3e4r', 'password', 'qwer1234', 'abcd', 'abcd1234', 'aaaa', 'qwerty',
 ]);
 
-/** 비밀번호 규칙: 4자 이상, 글자 종류 제한 없음, 흔한 값 거절. 문제 없으면 null */
+/** 비밀번호 규칙(새로 정하거나 바꿀 때): 6자 이상, 글자 종류 제한 없음, 흔한 값 거절. 문제 없으면 null */
 export function validatePassword(pw) {
   if (typeof pw !== 'string') return '비밀번호를 입력해 주세요.';
   if (pw.length < MIN_PW_LEN) return `비밀번호는 ${MIN_PW_LEN}자 이상이어야 합니다.`;

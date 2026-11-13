@@ -244,3 +244,10 @@ test('index.single.ts 안의 logic 블록이 logic.js 와 같다(복사본이 �
   assert.doesNotMatch(single, /PT_PEPPER/);
   assert.doesNotMatch(single, /^import /m); // 편집기에서 바로 붙여넣을 수 있게 import 없음
 });
+
+test('비밀번호 길이(O-0855): 서버 함수: 처음 만들기 5자 거절 / 6자 통과(바꾸기·옛 4자 로그인은 logic.test.mjs)', async () => {
+  db.slots[1] = { slot: 1, user_id: null, state: 'unset', failed_count: 0, lock_level: 0, locked_until: null };
+  assert.equal((await call({ action: 'setup', slot: 1, password: 'ab12c' })).body.error, 'weak');
+  assert.equal((await call({ action: 'setup', slot: 1, password: 'ab12cd' })).status, 200);
+  assert.equal((await call({ action: 'login', slot: 1, password: 'ab12cd' })).status, 200);
+});
