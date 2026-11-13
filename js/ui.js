@@ -462,20 +462,58 @@ export function createUI({ root, store, haptics = true }) {
       <div class="dlg-btns">${d.buttons.map((b) => `<button class="big-btn ${b.kind || ''} press" data-act="dlg" data-i="${b.i}">${esc(b.label)}</button>`).join('')}</div></div>`;
   }
   function ask({ title, body, buttons }) {
-    return new Promise((resolve) => { ui.dialog = { title, body, buttons: buttons.map((b, i) => ({ ...b, i })), resolve }; rerender(); });
+    return new Promise((resolve) => { ui.dialog = { title, body, buttons: buttons.map((b, i) => ({ ...b, i })), resolve }; navPush({ t: 'dialog' }); rerender(); });
   }
-  function answer(i) { const d = ui.dialog; ui.dialog = null; rerender(); if (d) d.resolve(d.buttons[i].value); }
+  function answer(i) { const d = ui.dialog; ui.dialog = null; if (d && navTop('dialog')) navBack(); rerender(); if (d) d.resolve(d.buttons[i].value); }
+  // 폰 뒤로가기로 확인창을 닫으면 「그만두기」(ghost 단추)를 누른 것과 같게 처리
+  function dismissDialog() {
+    const d = ui.dialog; if (!d) return;
+    ui.dialog = null; rerender();
+    const b = d.buttons.find((x) => x.kind === 'ghost') || d.buttons[d.buttons.length - 1];
+    d.resolve(b.value);
+  }
+
+  /* ============================== 뒤로가기 기록 (O-0855 B-01) ==============================
+     화면 이동·시트·확인창이 열릴 때마다 브라우저 기록을 한 칸씩 쌓고(ui._stack), 폰 뒤로가기는 가장 위 한 단계만 되돌린다.
+     처음 화면(기록 0칸)에서 뒤로가기는 브라우저가 앱(맞춤 탭)을 닫는다. 화면 이동은 최대 2칸(처음→내역→정산서/휴지통)이라 끝없이 쌓이지 않는다. */
+  ui._stack = []; ui._ignorePops = 0; ui._queued = []; ui._noHist = false;
+  const navTop = (t) => { const d = ui._stack[ui._stack.length - 1]; return !!d && (!t || d.t === t); };
+  // 브라우저는 「되돌리기」가 끝나기 전에 쌓은 기록을 엉뚱한 자리에 두므로, 되돌리는 중이면 쌓기를 끝난 뒤로 미룬다
+  function navFlush() { clearTimeout(ui._navT); const q = ui._queued; ui._queued = []; q.forEach((f) => f()); }
+  function navPush(d) {
+    if (ui._noHist) return; // 이 환경에서는 기록을 못 쌓음: 추적하지 않음(뒤로가기는 브라우저 기본 동작)
+    ui._stack.push(d);
+    const doPush = () => { try { history.pushState({ s: 1 }, ''); } catch { ui._noHist = true; ui._stack = []; } };
+    if (ui._ignorePops > 0) ui._queued.push(doPush); else doPush();
+  }
+  function navGo(n) { // 코드가 직접 n칸 되돌릴 때(브라우저가 알려 주는 popstate 는 무시하도록 표시)
+    if (n <= 0) return;
+    ui._ignorePops++;
+    try { history.go(-n); } catch { ui._ignorePops--; }
+    clearTimeout(ui._navT); ui._navT = setTimeout(() => { ui._ignorePops = 0; navFlush(); }, 700); // 안전장치: 알림이 안 오면 풀어 줌
+  }
+  function navBack() { ui._stack.pop(); navGo(1); }
+  function navReset() { const n = ui._stack.length; ui._stack = []; navGo(n); } // 로그아웃·로그인 직후: 쌓인 기록을 모두 걷어 낸다
+  /** 화면 이동. 바로 전 화면으로 가는 것이면 한 칸 되돌리고, 처음 화면으로는 쌓인 화면 기록을 모두 걷어 내며, 그 밖에는 한 칸 쌓는다. */
+  function navTo(target) {
+    if (ui.screen === target) return;
+    const top = ui._stack[ui._stack.length - 1];
+    if (top && top.t === 'screen' && top.prev === target) { navBack(); }
+    else if (target === 'home') { let n = 0; while (navTop('screen')) { ui._stack.pop(); n++; } navGo(n); }
+    else if (!top || top.t === 'screen') { navPush({ t: 'screen', prev: ui.screen }); }
+    ui.screen = target; rerender();
+  }
 
   /* ============================== 시트 열고 닫기 ============================== */
   function openSheet(sh) {
     ui.notice = '';
     ui.sheet = { error: '', ...sh };
-    try { history.pushState({ s: 1 }, ''); ui._pushed = (ui._pushed || 0) + 1; } catch { /* 무시 */ }
+    if (!navTop('sheet')) navPush({ t: 'sheet' }); // 이미 시트가 열려 있으면 기록을 더 쌓지 않음
     rerender();
   }
   function closeSheet({ fromPop = false } = {}) {
     if (!ui.sheet) return;
-    if (!fromPop && ui._pushed) { ui._pushed--; ui._ignorePop = true; try { history.back(); } catch { /* 무시 */ } }
+    if (!fromPop && navTop('sheet')) navBack();
     if (S.prefs.reduceMotion || !root.querySelector('.sheet')) { ui.sheet = null; rerender(); return; }
     ui.sheet.closing = true; rerender();
     setTimeout(() => { ui.sheet = null; rerender(); }, 160);
@@ -654,7 +692,7 @@ export function createUI({ root, store, haptics = true }) {
     L.busy = true; L.error = ''; rerender();
     try {
       if (first) await store.setup(1, pw1); else await store.login(1, pw1);
-      L.busy = false; ui.screen = 'home';
+      L.busy = false; ui.screen = 'home'; navReset();
       if (!S.prefs.fontChosen) openSheet({ kind: 'font' });
       rerender();
     } catch (e) {
@@ -671,12 +709,12 @@ export function createUI({ root, store, haptics = true }) {
     'toggle-show': () => { ui.login.show = !ui.login.show; rerender(); },
     'login-go': () => doLogin(),
     reauth: () => { store.logout().then(() => { ui.login = { error: '', busy: false, show: false }; rerender(); }); },
-    'go-home': () => { ui.screen = 'home'; rerender(); },
-    'go-records': () => { ui.screen = 'records'; rerender(); },
-    'go-report': () => { ui.screen = 'report'; rerender(); },
-    'go-trash': () => { ui.screen = 'trash'; rerender(); },
-    'go-settings': () => { ui.screen = 'settings'; rerender(); },
-    'go-month': (el) => { ui.month = el.dataset.ym; ui.screen = 'records'; rerender(); },
+    'go-home': () => navTo('home'),
+    'go-records': () => navTo('records'),
+    'go-report': () => navTo('report'),
+    'go-trash': () => navTo('trash'),
+    'go-settings': () => navTo('settings'),
+    'go-month': (el) => { ui.month = el.dataset.ym; navTo('records'); },
     'pick-month': (el) => { ui.month = el.dataset.ym; rerender(); },
     'pick-ledger': (el) => { store.setLedger(el.dataset.code); ui.month = null; rerender(); },
     print: () => { try { window.print(); } catch { say('인쇄를 열 수 없습니다.'); } },
@@ -750,12 +788,12 @@ export function createUI({ root, store, haptics = true }) {
     'logout-all': async () => {
       const a = await ask({ title: '모든 기기에서 로그아웃할까요?', body: ['열려 있는 모든 폰에서 로그아웃됩니다.', '다시 쓰려면 비밀번호를 입력해야 합니다.'], buttons: [{ label: '로그아웃', kind: 'danger', value: 'go' }, { label: '그만두기', kind: 'ghost', value: 'no' }] });
       if (a !== 'go') return;
-      await guarded(async () => { try { await store.logoutAllDevices(); ui.screen = 'home'; } catch (e) { say(saveErrorText(e), 4000); } });
+      await guarded(async () => { try { await store.logoutAllDevices(); ui.screen = 'home'; navReset(); } catch (e) { say(saveErrorText(e), 4000); } });
     },
     logout: async () => {
       const a = await ask({ title: '로그아웃할까요?', body: ['이 폰에서만 로그아웃합니다. 기록은 그대로 있습니다.'], buttons: [{ label: '로그아웃', kind: 'danger', value: 'go' }, { label: '그만두기', kind: 'ghost', value: 'no' }] });
       if (a !== 'go') return;
-      await store.logout(); ui.screen = 'home'; ui.login = { error: '', busy: false, show: false }; rerender();
+      await store.logout(); ui.screen = 'home'; navReset(); ui.login = { error: '', busy: false, show: false }; rerender();
     },
     dlg: (el) => answer(Number(el.dataset.i)),
   };
@@ -800,13 +838,15 @@ export function createUI({ root, store, haptics = true }) {
     }
   });
   window.addEventListener('popstate', () => {
-    if (ui._ignorePop) { ui._ignorePop = false; return; }
-    if (ui.dialog) return;
-    if (ui.sheet) { ui._pushed = Math.max(0, (ui._pushed || 1) - 1); closeSheet({ fromPop: true }); return; }
-    if (ui.screen !== 'home') { ui.screen = ui.screen === 'report' || ui.screen === 'trash' ? 'records' : 'home'; rerender(); }
+    if (ui._ignorePops > 0) { ui._ignorePops--; if (ui._ignorePops === 0) navFlush(); return; } // 코드가 되돌린 것
+    const d = ui._stack.pop();
+    if (!d) return; // 쌓은 기록이 없음 = 처음 화면. 브라우저가 알아서 앱을 닫는다
+    if (d.t === 'dialog') dismissDialog();
+    else if (d.t === 'sheet') closeSheet({ fromPop: true });
+    else { ui.screen = d.prev; rerender(); }
   });
 
-  store.on(() => rerender());
+  store.on(() => { if (S.phase !== 'app' && ui._stack.length && !ui.sheet && !ui.dialog) { ui.screen = 'home'; navReset(); } rerender(); });
   setInterval(() => {
     const un = S.undo;
     if (!un) return;
