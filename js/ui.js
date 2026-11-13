@@ -263,8 +263,8 @@ export function createUI({ root, store, haptics = true }) {
       ${res ? '' : `<p class="muted small">월 한도 ${won(e.monthly_limit)} 대비 ${used <= e.monthly_limit ? `${won(e.monthly_limit - used)} 남음` : `${won(used - e.monthly_limit)} 초과`}</p>`}
       <p class="muted small">이 표는 보조 자료입니다. 증빙은 정산서(워드)와 영수증 원본입니다.</p>
       <button class="big-btn primary press no-print" data-act="export-xlsx">엑셀로 내려받기</button>
-      ${canShareFile() ? '<button class="link press no-print" data-act="share-xlsx">내려받기가 안 되면 공유로 보내기</button>' : ''}
-      <p class="muted small no-print">엑셀 파일은 정산 월 한 달치입니다. 설치한 앱에서 안 열리면 인터넷 앱(크롬)에서 열어 주세요.</p>
+      ${canShareFile() ? '<button class="link press no-print" data-act="share-xlsx">내려받기가 안 되면 다른 앱으로 보내기</button>' : ''}
+      <p class="muted small no-print">엑셀 파일은 정산 월 한 달치입니다. 받아지지 않으면 화면 오른쪽 위 ⋮ → 「크롬에서 열기」를 눌러 크롬에서 열어 주세요.</p>
       <button class="big-btn press no-print" data-act="print">인쇄 / PDF로 저장</button>${undoBarHtml()}</main>`;
   }
 
@@ -519,15 +519,21 @@ export function createUI({ root, store, haptics = true }) {
   }
 
   /* ---------------------------- 엑셀 내려받기 (O-0855 B-03) ---------------------------- */
+  // 설치 앱 껍데기(웹뷰)인지: Capacitor 연결 객체 또는 웹뷰 표시(wv)가 있으면 파일 내려받기가 막힐 수 있다
+  const inAppShell = () => { try { return !!(window.Capacitor && (typeof window.Capacitor.isNativePlatform !== 'function' || window.Capacitor.isNativePlatform())) || /; wv\)/.test(navigator.userAgent); } catch { return false; } };
   function canShareFile() {
-    try { return matchMedia('(pointer: coarse)').matches && typeof navigator.canShare === 'function' && navigator.canShare({ files: [new File([''], 'a.xlsx', { type: XLSX_MIME })] }); } catch { return false; }
+    try { return (inAppShell() || matchMedia('(pointer: coarse)').matches) && typeof navigator.canShare === 'function' && navigator.canShare({ files: [new File([''], 'a.xlsx', { type: XLSX_MIME })] }); } catch { return false; }
   }
   async function exportXlsx(share) {
     try {
       const r = buildReportXlsx({ led: store.curLedger(), tx: store.ledgerTx(), ym: curMonth() });
       const blob = new Blob([r.bytes], { type: XLSX_MIME });
+      if (!share && inAppShell()) { // 설치 앱 안에서는 내려받기가 안 될 수 있어 「내려받습니다」라고 하지 않고 처음부터 다른 길을 안내
+        if (canShareFile()) share = true;
+        else { say('이 앱 안에서는 파일이 받아지지 않을 수 있습니다. 화면 오른쪽 위 ⋮ → 「크롬에서 열기」로 크롬에서 열어 주세요.', 7000); return; }
+      }
       if (share) {
-        try { await navigator.share({ files: [new File([blob], r.name, { type: XLSX_MIME })], title: r.name }); } catch (e) { if (!e || e.name !== 'AbortError') say('공유를 열지 못했습니다. 「엑셀로 내려받기」를 눌러 주세요.', 4000); }
+        try { await navigator.share({ files: [new File([blob], r.name, { type: XLSX_MIME })], title: r.name }); } catch (e) { if (!e || e.name !== 'AbortError') say('다른 앱으로 보내기를 열지 못했습니다. 「엑셀로 내려받기」를 눌러 주세요.', 4000); }
         return;
       }
       const url = URL.createObjectURL(blob);
