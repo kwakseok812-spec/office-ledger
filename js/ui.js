@@ -73,8 +73,18 @@ export function createUI({ root, store, haptics = true }) {
     const af = root.querySelector('[data-autofocus]');
     if (af && !keep && !ui._focused) af.focus();
     ui._focused = !!af;
+    centerMonthChips();
     document.body.classList.toggle('no-scroll', !!ui.sheet || !!ui.dialog);
     toast.textContent = ui.notice; toast.classList.toggle('show', !!ui.notice);
+  }
+  // 월 칩: 고른 달이 보이도록 가운데로 옮기고, 옆에 더 있으면 가장자리를 흐리게 (O-0855 B-08)
+  function fadeChips(c) { c.classList.toggle('more-l', c.scrollLeft > 2); c.classList.toggle('more-r', c.scrollLeft + c.clientWidth < c.scrollWidth - 2); }
+  function centerMonthChips() {
+    root.querySelectorAll('.month-chips').forEach((c) => {
+      const on = c.querySelector('.chip-f.on');
+      if (on && c.scrollWidth > c.clientWidth) c.scrollLeft = Math.max(0, on.offsetLeft - (c.clientWidth - on.offsetWidth) / 2);
+      fadeChips(c);
+    });
   }
   const rerender = () => { if (!renderQueued) { renderQueued = true; queueMicrotask(render); } };
 
@@ -837,6 +847,7 @@ export function createUI({ root, store, haptics = true }) {
       rerender();
     }
   });
+  root.addEventListener('scroll', (ev) => { if (ev.target.classList && ev.target.classList.contains('month-chips')) fadeChips(ev.target); }, true);
   window.addEventListener('popstate', () => {
     if (ui._ignorePops > 0) { ui._ignorePops--; if (ui._ignorePops === 0) navFlush(); return; } // 코드가 되돌린 것
     const d = ui._stack.pop();

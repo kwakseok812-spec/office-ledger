@@ -312,7 +312,11 @@ html[data-reduce="1"] *, html[data-reduce="1"] *::before, html[data-reduce="1"] 
 .tx-row .r-val small { font-size: .8rem; font-weight: 700; color: var(--muted); margin-left: 2px; }
 .tx-row .r-sub { justify-content: flex-end; }
 .tx-row .r-sub b { font-weight: 800; }
-.month-chips { flex-wrap: nowrap; overflow-x: auto; padding-bottom: 4px; }
+.month-chips { flex-wrap: nowrap; overflow-x: auto; padding-bottom: 4px; position: relative; }
+/* 옆으로 더 있다는 힌트: 잘리는 쪽 가장자리를 살짝 흐리게 (O-0855 B-08) */
+.month-chips.more-r { -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent); mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent); }
+.month-chips.more-l { -webkit-mask-image: linear-gradient(to left, #000 calc(100% - 28px), transparent); mask-image: linear-gradient(to left, #000 calc(100% - 28px), transparent); }
+.month-chips.more-l.more-r { -webkit-mask-image: linear-gradient(to right, transparent, #000 28px, #000 calc(100% - 28px), transparent); mask-image: linear-gradient(to right, transparent, #000 28px, #000 calc(100% - 28px), transparent); }
 .month-chips .chip-f { flex: 0 0 auto; }
 .month-sum { display: flex; justify-content: space-between; gap: 8px; flex-wrap: wrap; padding: 10px 14px; border-radius: 14px; background: var(--accent-soft); margin-bottom: 10px; }
 .month-sum.over { background: var(--over-soft); }
