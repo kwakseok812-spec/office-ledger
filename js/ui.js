@@ -606,7 +606,7 @@ export function createUI({ root, store, haptics = true }) {
             say(r.status === 'queued' ? '임시로 저장했습니다. 하나 더 입력하세요.' : `저장됨 · ${won(f.amount)}. 하나 더 입력하세요.`, 2600);
             const amt = root.querySelector('[data-keep="amount"]'); if (amt) setTimeout(() => amt.focus(), 30);
           } else {
-            switchSheet({ kind: 'saved', status: r.status, again: true, headline: '저장됨', lines: txLines(r.row) });
+            switchSheet({ kind: 'saved', status: r.status, again: true, lastDate: f.tx_date, headline: '저장됨', lines: txLines(r.row) });
           }
         }
       } catch (e) { sh.error = saveErrorText(e); }
