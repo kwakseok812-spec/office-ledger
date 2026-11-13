@@ -4,6 +4,7 @@ import { SaveError } from './store.js';
 import { ApiError, NetworkError } from './data.js';
 import { validatePassword } from '../supabase/functions/ex-auth/logic.js';
 import { APP_VERSION, APP_NAME } from './config.js';
+import { buildReportXlsx, XLSX_MIME } from './xlsx.js';
 
 const FONT_LABEL = { normal: '보통', large: '크게', xlarge: '아주 크게' };
 const LEDGER_SHORT = { opex: '운영비', research: '연구비' };
@@ -261,7 +262,10 @@ export function createUI({ root, store, haptics = true }) {
         <tfoot><tr><td colspan="4" class="r">합계 (${rows.length}건)</td><td class="r">${num(used)}</td><td colspan="${cols.length - 5}"></td></tr></tfoot></table></div>
       ${res ? '' : `<p class="muted small">월 한도 ${won(e.monthly_limit)} 대비 ${used <= e.monthly_limit ? `${won(e.monthly_limit - used)} 남음` : `${won(used - e.monthly_limit)} 초과`}</p>`}
       <p class="muted small">이 표는 보조 자료입니다. 증빙은 정산서(워드)와 영수증 원본입니다.</p>
-      <button class="big-btn primary press no-print" data-act="print">인쇄 / PDF로 저장</button>${undoBarHtml()}</main>`;
+      <button class="big-btn primary press no-print" data-act="export-xlsx">엑셀로 내려받기</button>
+      ${canShareFile() ? '<button class="link press no-print" data-act="share-xlsx">내려받기가 안 되면 공유로 보내기</button>' : ''}
+      <p class="muted small no-print">엑셀 파일은 정산 월 한 달치입니다. 설치한 앱에서 안 열리면 인터넷 앱(크롬)에서 열어 주세요.</p>
+      <button class="big-btn press no-print" data-act="print">인쇄 / PDF로 저장</button>${undoBarHtml()}</main>`;
   }
 
   function trashHtml() {
@@ -514,6 +518,26 @@ export function createUI({ root, store, haptics = true }) {
     ui.screen = target; rerender();
   }
 
+  /* ---------------------------- 엑셀 내려받기 (O-0855 B-03) ---------------------------- */
+  function canShareFile() {
+    try { return matchMedia('(pointer: coarse)').matches && typeof navigator.canShare === 'function' && navigator.canShare({ files: [new File([''], 'a.xlsx', { type: XLSX_MIME })] }); } catch { return false; }
+  }
+  async function exportXlsx(share) {
+    try {
+      const r = buildReportXlsx({ led: store.curLedger(), tx: store.ledgerTx(), ym: curMonth() });
+      const blob = new Blob([r.bytes], { type: XLSX_MIME });
+      if (share) {
+        try { await navigator.share({ files: [new File([blob], r.name, { type: XLSX_MIME })], title: r.name }); } catch (e) { if (!e || e.name !== 'AbortError') say('공유를 열지 못했습니다. 「엑셀로 내려받기」를 눌러 주세요.', 4000); }
+        return;
+      }
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a'); a.href = url; a.download = r.name; a.rel = 'noopener'; a.style.display = 'none';
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 60000);
+      say(`엑셀 파일(${r.name})을 내려받습니다. 알림이나 「다운로드」에서 열어 주세요.`, 5000);
+    } catch { say('엑셀 파일을 만들지 못했습니다. 다시 눌러 주세요.', 4000); }
+  }
+
   /* ============================== 시트 열고 닫기 ============================== */
   function openSheet(sh) {
     ui.notice = '';
@@ -727,6 +751,8 @@ export function createUI({ root, store, haptics = true }) {
     'go-month': (el) => { ui.month = el.dataset.ym; navTo('records'); },
     'pick-month': (el) => { ui.month = el.dataset.ym; rerender(); },
     'pick-ledger': (el) => { store.setLedger(el.dataset.code); ui.month = null; rerender(); },
+    'export-xlsx': () => exportXlsx(false),
+    'share-xlsx': () => exportXlsx(true),
     print: () => { try { window.print(); } catch { say('인쇄를 열 수 없습니다.'); } },
     'add-tx': () => openAdd(),
     'edit-tx': (el) => openEdit(el.dataset.id),
