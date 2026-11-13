@@ -120,11 +120,22 @@ def sI(pg, log):
     back(pg); log.append(('뒤로', where(pg)))
 
 
+def sJ(pg, log):
+    act(pg, 'go-records'); act(pg, 'add-tx')
+    pg.locator('.sheet [data-keep="amount"]').fill('2000000')
+    pg.locator('.sheet [data-keep="summary"]').fill('시험 아주 큰 금액')
+    act(pg, 'save-tx'); log.append(('저장 누름(금액이 커서 첫 확인창)', where(pg)))
+    pg.locator('.dialog [data-act="dlg"]').first.click(); pg.wait_for_timeout(300); log.append(('「맞습니다, 저장」→ 총 예산 초과 확인창이 이어서 뜸', where(pg)))
+    back(pg); log.append(('뒤로', where(pg)))
+    back(pg); log.append(('뒤로', where(pg)))
+    back(pg); log.append(('뒤로', where(pg)))
+
+
 bad = []
 with sync_playwright() as p:
     b = p.chromium.launch()
     for nm, fn in [('A 홈→내역→정산서', sA), ('B 홈→설정', sB), ('C 내역→휴지통', sC), ('D 내역→시트', sD), ('E 시트→확인창', sE),
-                   ('F 「처음 화면」 단추로 한꺼번에', sF), ('G 시트를 단추로 닫은 뒤', sG), ('H 홈 그래프→내역', sH), ('I 여러 곳 돌아다닌 뒤', sI)]:
+                   ('F 「처음 화면」 단추로 한꺼번에', sF), ('G 시트를 단추로 닫은 뒤', sG), ('H 홈 그래프→내역', sH), ('I 여러 곳 돌아다닌 뒤', sI), ('J 확인창이 연달아 두 번', sJ)]:
         scenario(nm, fn, b)
     print('===== 뒤로가기 순서표 (%s) =====' % TAG)
     for nm, log in rows:
